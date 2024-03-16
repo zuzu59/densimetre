@@ -2,7 +2,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf240316.1831
+// zf240316.2213
 //
 // Installation:
 
@@ -26,11 +26,11 @@
 // MPU6050
 #include "MPU6050.h"
 #include "Wire.h"
-#include "MPUOffset.h"
 
 MPU6050 accelgyro;
 
 int16_t ax, ay, az;
+int16_t axOffset, ayOffset, azOffset;
 int16_t gx, gy, gz;
 
 #define UNINIT 0
@@ -55,7 +55,7 @@ int16_t gx, gy, gz;
 // #define SENSOR_NAME1     "H2S"
 // #define SENSOR_NAME2     "NH3"
 
-#define PUBLISH_INTERVAL  4000 // how often image should be published to HA (milliseconds)
+#define PUBLISH_INTERVAL  40000 // how often image should be published to HA (milliseconds)
 
 // WiFiClient client;
 // HADevice device(DEVICE_NAME);                // c'est le IDS du device, il doit être unique !
@@ -106,31 +106,64 @@ int16_t gx, gy, gz;
 
 
 float calculateTilt() {
+
   if (ax == 0 && ay == 0 && az == 0)
     return 0.f;
 
-  return acos(abs(az) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI;
+  // return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI);
+  return 90 - (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI * 2);
 }
 
 void applyOffset() {
     USBSerial.println("Updating internal sensor offsets...");
     // -76	-2359	1688	0	0	0
-    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t"); // -76
-    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t"); // -2359
-    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t"); // 1688
-    USBSerial.print(accelgyro.getXGyroOffset()); USBSerial.print("\t"); // 0
-    USBSerial.print(accelgyro.getYGyroOffset()); USBSerial.print("\t"); // 0
-    USBSerial.print(accelgyro.getZGyroOffset()); USBSerial.print("\t"); // 0
+    // USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t"); // -76
+    // USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t"); // -2359
+    // USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t"); // 1688
+    // USBSerial.print(accelgyro.getXGyroOffset()); USBSerial.print("\t"); // 0
+    // USBSerial.print(accelgyro.getYGyroOffset()); USBSerial.print("\t"); // 0
+    // USBSerial.print(accelgyro.getZGyroOffset()); USBSerial.print("\t"); // 0
     USBSerial.print("\n");
-    accelgyro.setXGyroOffset(220);
-    accelgyro.setYGyroOffset(76);
-    accelgyro.setZGyroOffset(-85);
-    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t"); // -76
-    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t"); // -2359
-    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t"); // 1688
-    USBSerial.print(accelgyro.getXGyroOffset()); USBSerial.print("\t"); // 0
-    USBSerial.print(accelgyro.getYGyroOffset()); USBSerial.print("\t"); // 0
-    USBSerial.print(accelgyro.getZGyroOffset()); USBSerial.print("\t"); // 0
+
+
+
+    USBSerial.println("Avant...");
+    axOffset = 0;
+    ayOffset = 0;
+    azOffset = 0;
+
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
+
+    USBSerial.println("Après...");
+    // accelgyro.setXAccelOffset(-ax/8.15);
+    // accelgyro.setYAccelOffset(-ay/9.4);
+    // accelgyro.setZAccelOffset(az/9);
+
+    axOffset = -ax;
+    ayOffset = -ay;
+    azOffset = -az;
+
+    ax = ax+axOffset;
+    ay = ay+ayOffset;
+    az = az+azOffset;
+
+    // accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
+
+
+
+
+    // accelgyro.setXGyroOffset(220);
+    // accelgyro.setYGyroOffset(76);
+    // accelgyro.setZGyroOffset(-85);
+
+    // USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t"); // -76
+    // USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t"); // -2359
+    // USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t"); // 1688
+    // USBSerial.print(accelgyro.getXGyroOffset()); USBSerial.print("\t"); // 0
+    // USBSerial.print(accelgyro.getYGyroOffset()); USBSerial.print("\t"); // 0
+    // USBSerial.print(accelgyro.getZGyroOffset()); USBSerial.print("\t"); // 0
     USBSerial.print("\n");
     
 }
@@ -155,6 +188,7 @@ void setup() {
     // initialize device
     USBSerial.println("Initializing I2C devices...");
     accelgyro.initialize();
+    applyOffset();
 
     // verify connection
     USBSerial.println("Testing device connections...");
@@ -191,9 +225,14 @@ void loop() {
     // USBSerial.print(gy); USBSerial.print("\t");
     // USBSerial.println(gz);
 
+    ax = ax+axOffset;
+    ay = ay+ayOffset;
+    az = az+azOffset;
 
-    USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
-    USBSerial.printf("inclinaison:%d\n", calculateTilt());
+    // USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
+    // USBSerial.printf("sqrt:%f\n", sqrt(ax * ax + ay * ay + az * az));
+
+    USBSerial.printf("inclinaison:%f\n", calculateTilt());
 
 
     // sensorValue1 = analogRead(sensorPin1);
@@ -206,6 +245,7 @@ void loop() {
 
     // USBSerial.printf("sensor1:%d,sensor2:%d\n", sensorValue1, sensorValue2);
 
-    delay(PUBLISH_INTERVAL);
+    // delay(PUBLISH_INTERVAL);
+    delay(1000);
 }
 
