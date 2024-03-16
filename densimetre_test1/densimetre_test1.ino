@@ -19,6 +19,10 @@
 
 // https://github.com/dawidchyrzynski/arduino-home-assistant/blob/main/examples/sensor-integer/sensor-integer.ino
 
+// General
+# define LED_BUILTIN 7
+
+
 // MPU6050
 #include "MPU6050.h"
 #include "Wire.h"
@@ -109,8 +113,15 @@ void setup() {
     delay(500); 
     digitalWrite(LED_BUILTIN, LOW);
 
+    Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
 
+    // initialize device
+    USBSerial.println("Initializing I2C devices...");
+    accelgyro.initialize();
 
+    // verify connection
+    USBSerial.println("Testing device connections...");
+    USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
 
 
@@ -130,6 +141,22 @@ void loop() {
     digitalWrite(LED_BUILTIN, HIGH);
     delay(100); 
     digitalWrite(LED_BUILTIN, LOW);
+
+    // read raw accel/gyro measurements from device
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+    // // display tab-separated accel/gyro x/y/z values
+    // USBSerial.print("a/g:\t");
+    // USBSerial.print(ax); USBSerial.print("\t");
+    // USBSerial.print(ay); USBSerial.print("\t");
+    // USBSerial.print(az); USBSerial.print("\t");
+    // USBSerial.print(gx); USBSerial.print("\t");
+    // USBSerial.print(gy); USBSerial.print("\t");
+    // USBSerial.println(gz);
+
+
+    USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
+
 
     // sensorValue1 = analogRead(sensorPin1);
     // sensorValue2 = analogRead(sensorPin2);
