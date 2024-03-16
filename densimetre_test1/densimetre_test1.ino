@@ -26,10 +26,14 @@
 // MPU6050
 #include "MPU6050.h"
 #include "Wire.h"
+#include "MPUOffset.h"
+
 MPU6050 accelgyro;
 
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
+
+#define UNINIT 0
 
 
 // int sensorPin1 = 1;   // select the input pin for the sensor 1
@@ -101,6 +105,39 @@ int16_t gx, gy, gz;
 
 
 
+float calculateTilt() {
+  if (ax == 0 && ay == 0 && az == 0)
+    return 0.f;
+
+  return acos(abs(az) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI;
+}
+
+void applyOffset() {
+    USBSerial.println("Updating internal sensor offsets...");
+    // -76	-2359	1688	0	0	0
+    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t"); // -76
+    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t"); // -2359
+    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t"); // 1688
+    USBSerial.print(accelgyro.getXGyroOffset()); USBSerial.print("\t"); // 0
+    USBSerial.print(accelgyro.getYGyroOffset()); USBSerial.print("\t"); // 0
+    USBSerial.print(accelgyro.getZGyroOffset()); USBSerial.print("\t"); // 0
+    USBSerial.print("\n");
+    accelgyro.setXGyroOffset(220);
+    accelgyro.setYGyroOffset(76);
+    accelgyro.setZGyroOffset(-85);
+    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t"); // -76
+    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t"); // -2359
+    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t"); // 1688
+    USBSerial.print(accelgyro.getXGyroOffset()); USBSerial.print("\t"); // 0
+    USBSerial.print(accelgyro.getYGyroOffset()); USBSerial.print("\t"); // 0
+    USBSerial.print(accelgyro.getZGyroOffset()); USBSerial.print("\t"); // 0
+    USBSerial.print("\n");
+    
+}
+
+
+
+
 
 void setup() {
     USBSerial.begin(19200);
@@ -156,6 +193,7 @@ void loop() {
 
 
     USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
+    USBSerial.printf("inclinaison:%d\n", calculateTilt());
 
 
     // sensorValue1 = analogRead(sensorPin1);
