@@ -23,6 +23,11 @@
 
 // https://github.com/dawidchyrzynski/arduino-home-assistant/blob/main/examples/sensor-integer/sensor-integer.ino
 
+
+#define DEBUG true
+
+
+
 // General
 # define LED_BUILTIN 7
 // int sensorPin1 = 1;   // select the input pin for the sensor 1
@@ -254,10 +259,10 @@ bool saveConfig()
   // if LittleFS is not usable
   if (!LittleFS.begin())
   {
-    Serial.println("Failed to mount file system");
+    USBSerial.println("Failed to mount file system");
     if (!formatLittleFS())
     {
-      Serial.println("Failed to format file system - hardware issues!");
+      USBSerial.println("Failed to format file system - hardware issues!");
       return false;
     }
   }
@@ -394,12 +399,12 @@ bool readConfig()
           //   myData.psk = (const char *)doc["PSK"];
           // if (doc.containsKey("POLY"))
           //   strcpy(myData.polynominal, doc["POLY"]);
-#if API_MQTT_HASSIO
-          if (doc.containsKey("Hassio"))
-            myData.hassio = doc["Hassio"];
-#endif
-          if (doc.containsKey("UseHTTPS"))
-            myData.usehttps = doc["UseHTTPS"];
+// #if API_MQTT_HASSIO
+//           if (doc.containsKey("Hassio"))
+//             myData.hassio = doc["Hassio"];
+// #endif
+          // if (doc.containsKey("UseHTTPS"))
+          //   myData.usehttps = doc["UseHTTPS"];
           if (doc.containsKey("Offset"))
           {
             for (size_t i = 0; i < (sizeof(myData.Offset) / sizeof(*myData.Offset)); i++)
@@ -459,9 +464,18 @@ void setup() {
     USBSerial.println("Testing device connections...");
     USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
-    delay(500);
-    // Calculate  offset
-    calculateOffset();
+
+    saveConfig();
+
+    // readConfig();
+
+
+
+
+
+    // delay(500);
+    // // Calculate  offset
+    // calculateOffset();
 
 
 
@@ -511,6 +525,6 @@ void loop() {
     // USBSerial.printf("sensor1:%d,sensor2:%d\n", sensorValue1, sensorValue2);
 
     // delay(PUBLISH_INTERVAL);
-    delay(300);
+    delay(300000);
 }
 
