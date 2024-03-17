@@ -2,8 +2,11 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf240316.2213
+// zf240317.1512
 //
+// Utilisation:
+// Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
+// 
 // Installation:
 
 // Pour l'accéléromètre, il faut installer la lib MPU6050 by Electrnoic Cats
@@ -105,41 +108,45 @@ int16_t gx, gy, gz;
 
 
 
-float calculateTilt() {
 
-  if (ax == 0 && ay == 0 && az == 0)
-    return 0.f;
 
-  // return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI);
-  return 90 - (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI * 2);
-}
-
-void applyOffset() {
+void calculateOffset() {
     USBSerial.println("Updating internal sensor offsets...");
-    // -76	-2359	1688	0	0	0
-    // USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t"); // -76
-    // USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t"); // -2359
-    // USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t"); // 1688
-    // USBSerial.print(accelgyro.getXGyroOffset()); USBSerial.print("\t"); // 0
-    // USBSerial.print(accelgyro.getYGyroOffset()); USBSerial.print("\t"); // 0
-    // USBSerial.print(accelgyro.getZGyroOffset()); USBSerial.print("\t"); // 0
+
+    USBSerial.print("Internal sensor offsets: ");
+    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t");
+    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t");
+    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t");
     USBSerial.print("\n");
-
-
 
     USBSerial.println("Avant...");
     axOffset = 0;
     ayOffset = 0;
     azOffset = 0;
 
-    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    accelgyro.setXAccelOffset(axOffset);
+    accelgyro.setYAccelOffset(ayOffset);
+    accelgyro.setZAccelOffset(azOffset);
+
+    USBSerial.print("Internal sensor offsets: ");
+    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t");
+    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t");
+    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t");
+    USBSerial.print("\n");
+    
+    accelgyro.getAcceleration(&ax, &ay, &az);
     USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
 
     USBSerial.println("Après...");
-    // accelgyro.setXAccelOffset(-ax/8.15);
-    // accelgyro.setYAccelOffset(-ay/9.4);
-    // accelgyro.setZAccelOffset(az/9);
+    accelgyro.CalibrateAccel(6);
 
+    USBSerial.print("Internal sensor offsets: ");
+    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t");
+    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t");
+    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t");
+    USBSerial.print("\n");
+
+    accelgyro.getAcceleration(&ax, &ay, &az);
     axOffset = -ax;
     ayOffset = -ay;
     azOffset = -az;
@@ -148,27 +155,21 @@ void applyOffset() {
     ay = ay+ayOffset;
     az = az+azOffset;
 
-    // accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    // accelgyro.getAcceleration(&ax, &ay, &az);
     USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
-
-
-
-
-    // accelgyro.setXGyroOffset(220);
-    // accelgyro.setYGyroOffset(76);
-    // accelgyro.setZGyroOffset(-85);
-
-    // USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t"); // -76
-    // USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t"); // -2359
-    // USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t"); // 1688
-    // USBSerial.print(accelgyro.getXGyroOffset()); USBSerial.print("\t"); // 0
-    // USBSerial.print(accelgyro.getYGyroOffset()); USBSerial.print("\t"); // 0
-    // USBSerial.print(accelgyro.getZGyroOffset()); USBSerial.print("\t"); // 0
-    USBSerial.print("\n");
-    
+    USBSerial.println("End of updating internal sensor offsets...");
 }
 
 
+
+float calculateTilt() {
+
+  if (ax == 0 && ay == 0 && az == 0)
+    return 0.f;
+
+  // return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI);
+  return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI * 2) -90 ;
+}
 
 
 
@@ -188,11 +189,18 @@ void setup() {
     // initialize device
     USBSerial.println("Initializing I2C devices...");
     accelgyro.initialize();
-    applyOffset();
-
+    accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+    accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+    accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
+    accelgyro.setTempSensorEnabled(true);
     // verify connection
     USBSerial.println("Testing device connections...");
     USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+
+    delay(500);
+    // Calculate  offset
+    calculateOffset();
+
 
 
 
@@ -213,26 +221,21 @@ void loop() {
     delay(100); 
     digitalWrite(LED_BUILTIN, LOW);
 
-    // read raw accel/gyro measurements from device
-    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    // read raw accel measurements from device
+    accelgyro.getAcceleration(&ax, &ay, &az);
 
-    // // display tab-separated accel/gyro x/y/z values
-    // USBSerial.print("a/g:\t");
-    // USBSerial.print(ax); USBSerial.print("\t");
-    // USBSerial.print(ay); USBSerial.print("\t");
-    // USBSerial.print(az); USBSerial.print("\t");
-    // USBSerial.print(gx); USBSerial.print("\t");
-    // USBSerial.print(gy); USBSerial.print("\t");
-    // USBSerial.println(gz);
-
+    // Offset correction
     ax = ax+axOffset;
     ay = ay+ayOffset;
     az = az+azOffset;
 
     // USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
-    // USBSerial.printf("sqrt:%f\n", sqrt(ax * ax + ay * ay + az * az));
 
+    // Calculate Tilt
     USBSerial.printf("inclinaison:%f\n", calculateTilt());
+
+
+
 
 
     // sensorValue1 = analogRead(sensorPin1);
@@ -246,6 +249,6 @@ void loop() {
     // USBSerial.printf("sensor1:%d,sensor2:%d\n", sensorValue1, sensorValue2);
 
     // delay(PUBLISH_INTERVAL);
-    delay(1000);
+    delay(300);
 }
 
