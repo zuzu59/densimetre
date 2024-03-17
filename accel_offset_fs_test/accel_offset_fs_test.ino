@@ -1,14 +1,14 @@
-// Simple tests du capteur accéléromètre MPU6050 que je vais utiliser pour mon densimètre électronique
+// Tests de sauvetage et restauration de l'offset de l'accéléromètre dans le FS du esp32-c3
+// Comme on va utiliser le mode dsleep, c'est important de pouvoir sauvegarder l'état de l'offset
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf240317.1512
+// zf240317.1709
 //
 // Utilisation:
-// Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
+// Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
 // 
 // Installation:
-
 // Pour l'accéléromètre, il faut installer la lib MPU6050 by Electrnoic Cats
 //  depuis le library manager de l'Arduino IDE
 //
@@ -16,6 +16,7 @@
 // https://github.com/dawidchyrzynski/arduino-home-assistant
 //
 // Sources:
+// https://github.com/universam1/iSpindel/tree/master
 // https://components101.com/sensors/mpu6050-module
 // https://github.com/electroniccats/mpu6050
 // https://github.com/ElectronicCats/mpu6050/blob/master/examples/MPU6050_raw/MPU6050_raw.ino
@@ -24,9 +25,58 @@
 
 // General
 # define LED_BUILTIN 7
+// int sensorPin1 = 1;   // select the input pin for the sensor 1
+// long sensorValue1 = 0;  // variable to store the value coming from the sensor 1
+// int sensorPin2 = 3;   // select the input pin for the sensor 2
+// long sensorValue2 = 0;  // variable to store the value coming from the sensor 2
+#define TEMP_CELSIUS 0
 
 
-// MPU6050
+
+
+
+// File system FS esp32-c3
+#include <FS.h>          //this needs to be first
+#include <LittleFS.h>
+#include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
+#define CFGFILE "/config.json"
+
+struct iData
+{
+  // char token[TKIDSIZE * 2];
+  char name[33] = "";
+  // char server[DNSSIZE];
+  // char uri[DNSSIZE];
+  // char username[TKIDSIZE];
+  // char password[DNSSIZE];
+  // char job[TKIDSIZE] = "ispindel";
+  // char instance[TKIDSIZE] = "000";
+  // char polynominal[1000] = "-0.00031*tilt^2+0.557*tilt-14.054";
+  // String ssid;
+  // String psk;
+  uint8_t api;
+  uint32_t sleeptime = 15 * 60;
+  uint16_t port = 80;
+  uint32_t channel;
+  // float vfact = ADCDIVISOR;
+  int16_t Offset[6];
+  uint8_t tempscale = TEMP_CELSIUS;
+  int8_t OWpin = -1;
+#if API_MQTT_HASSIO
+  bool hassio = false;
+#endif
+  bool usehttps = false;
+};
+
+iData myData;
+
+
+
+
+
+
+
+// Accéléromètre MPU6050
 #include "MPU6050.h"
 #include "Wire.h"
 
@@ -35,15 +85,6 @@ MPU6050 accelgyro;
 int16_t ax, ay, az;
 int16_t axOffset, ayOffset, azOffset;
 int16_t gx, gy, gz;
-
-#define UNINIT 0
-
-
-// int sensorPin1 = 1;   // select the input pin for the sensor 1
-// long sensorValue1 = 0;  // variable to store the value coming from the sensor 1
-// int sensorPin2 = 3;   // select the input pin for the sensor 2
-// long sensorValue2 = 0;  // variable to store the value coming from the sensor 2
-
 
 
 
@@ -106,8 +147,24 @@ int16_t gx, gy, gz;
 //     USBSerial.println("MQTT connected");
 // }
 
+// Redirection de la console
+#define CONSOLE(...)                                                                                                   \
+  do                                                                                                                   \
+  {                                                                                                                    \
+    USBSerial.print(__VA_ARGS__);                                                                                         \
+  } while (0)
 
+#define CONSOLELN(...)                                                                                                 \
+  do                                                                                                                   \
+  {                                                                                                                    \
+    USBSerial.println(__VA_ARGS__);                                                                                       \
+  } while (0)
 
+#define CONSOLEF(...)                                                                                                 \
+  do                                                                                                                   \
+  {                                                                                                                    \
+    USBSerial.printf(__VA_ARGS__);                                                                                       \
+  } while (0)
 
 
 void calculateOffset() {
@@ -170,6 +227,211 @@ float calculateTilt() {
   // return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI);
   return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI * 2) -90 ;
 }
+
+
+
+
+
+
+
+bool formatLittleFS()
+{
+  CONSOLE(F("\nneed to format LittleFS: "));
+  LittleFS.end();
+  LittleFS.begin();
+  CONSOLELN(LittleFS.format());
+  return LittleFS.begin();
+}
+
+
+
+
+
+bool saveConfig()
+{
+  CONSOLE(F("saving config...\n"));
+
+  // if LittleFS is not usable
+  if (!LittleFS.begin())
+  {
+    Serial.println("Failed to mount file system");
+    if (!formatLittleFS())
+    {
+      Serial.println("Failed to format file system - hardware issues!");
+      return false;
+    }
+  }
+
+  DynamicJsonDocument doc(2048);
+
+  doc["Name"] = myData.name;
+  // doc["Token"] = myData.token;
+  doc["Sleep"] = myData.sleeptime;
+  // first reboot is for test
+  myData.sleeptime = 1;
+  // doc["Server"] = myData.server;
+  doc["API"] = myData.api;
+  doc["Port"] = myData.port;
+  doc["Channel"] = myData.channel;
+  // doc["URI"] = myData.uri;
+  // doc["Username"] = myData.username;
+  // doc["Password"] = myData.password;
+  // doc["Job"] = myData.job;
+  // doc["Instance"] = myData.instance;
+#if API_MQTT_HASSIO
+  doc["Hassio"] = myData.hassio;
+#endif
+  doc["UseHTTPS"] = myData.usehttps;
+  // doc["Vfact"] = myData.vfact;
+  doc["TS"] = myData.tempscale;
+  doc["OWpin"] = myData.OWpin;
+  // doc["POLY"] = myData.polynominal;
+  // doc["SSID"] = WiFi.SSID();
+  // doc["PSK"] = WiFi.psk();
+
+  JsonArray array = doc.createNestedArray("Offset");
+  for (auto &&i : myData.Offset)
+  {
+    array.add(i);
+  }
+
+  File configFile = LittleFS.open(CFGFILE, "w");
+  if (!configFile)
+  {
+    CONSOLELN(F("failed to open config file for writing"));
+    LittleFS.end();
+    return false;
+  }
+  else
+  {
+    serializeJson(doc, configFile);
+#ifdef DEBUG
+    serializeJson(doc, Serial);
+#endif
+    configFile.flush();
+    configFile.close();
+    // LittleFS.gc();
+    LittleFS.end();
+    CONSOLELN(F("\nsaved successfully"));
+    return true;
+  }
+}
+
+
+
+
+bool readConfig()
+{
+  CONSOLE(F("mounting FS..."));
+
+  if (!LittleFS.begin())
+  {
+    CONSOLELN(F(" ERROR: failed to mount FS!"));
+    return false;
+  }
+  else
+  {
+    CONSOLELN(F(" mounted!"));
+    if (!LittleFS.exists(CFGFILE))
+    {
+      CONSOLELN(F("ERROR: failed to load json config"));
+      return false;
+    }
+    else
+    {
+      // file exists, reading and loading
+      CONSOLELN(F("reading config file"));
+      File configFile = LittleFS.open(CFGFILE, "r");
+      if (!configFile)
+      {
+        CONSOLELN(F("ERROR: unable to open config file"));
+      }
+      else
+      {
+        size_t size = configFile.size();
+        DynamicJsonDocument doc(size * 3);
+        DeserializationError error = deserializeJson(doc, configFile);
+        if (error)
+        {
+          CONSOLE(F("deserializeJson() failed: "));
+          CONSOLELN(error.c_str());
+        }
+        else
+        {
+          if (doc.containsKey("Name"))
+            strcpy(myData.name, doc["Name"]);
+          // if (doc.containsKey("Token"))
+          //   strcpy(myData.token, doc["Token"]);
+          // if (doc.containsKey("Server"))
+          //   strcpy(myData.server, doc["Server"]);
+          // if (doc.containsKey("Sleep"))
+          //   myData.sleeptime = doc["Sleep"];
+          // if (doc.containsKey("API"))
+          //   myData.api = doc["API"];
+          // if (doc.containsKey("Port"))
+          //   myData.port = doc["Port"];
+          // if (doc.containsKey("Channel"))
+          //   myData.channel = doc["Channel"];
+          // if (doc.containsKey("URI"))
+          //   strcpy(myData.uri, doc["URI"]);
+          // if (doc.containsKey("Username"))
+          //   strcpy(myData.username, doc["Username"]);
+          // if (doc.containsKey("Password"))
+          //   strcpy(myData.password, doc["Password"]);
+          // if (doc.containsKey("Job"))
+          //   strcpy(myData.job, doc["Job"]);
+          // if (doc.containsKey("Instance"))
+          //   strcpy(myData.instance, doc["Instance"]);
+          // if (doc.containsKey("Vfact"))
+          //   myData.vfact = doc["Vfact"];
+          // if (doc.containsKey("TS"))
+          //   myData.tempscale = doc["TS"];
+          // if (doc.containsKey("OWpin"))
+          //   myData.OWpin = doc["OWpin"];
+          // if (doc.containsKey("SSID"))
+          //   myData.ssid = (const char *)doc["SSID"];
+          // if (doc.containsKey("PSK"))
+          //   myData.psk = (const char *)doc["PSK"];
+          // if (doc.containsKey("POLY"))
+          //   strcpy(myData.polynominal, doc["POLY"]);
+#if API_MQTT_HASSIO
+          if (doc.containsKey("Hassio"))
+            myData.hassio = doc["Hassio"];
+#endif
+          if (doc.containsKey("UseHTTPS"))
+            myData.usehttps = doc["UseHTTPS"];
+          if (doc.containsKey("Offset"))
+          {
+            for (size_t i = 0; i < (sizeof(myData.Offset) / sizeof(*myData.Offset)); i++)
+            {
+              myData.Offset[i] = doc["Offset"][i];
+            }
+          }
+
+          CONSOLELN(F("parsed config:"));
+#ifdef DEBUG
+          serializeJson(doc, Serial);
+          CONSOLELN();
+#endif
+        }
+      }
+    }
+  }
+  return true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
