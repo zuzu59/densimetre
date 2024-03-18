@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf240317.1709
+// zf240318.1846
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -426,11 +426,70 @@ bool readConfig()
 }
 
 
+bool mountFS()
+{
+  CONSOLE(F("saving config...\n"));
+
+  // if LittleFS is not usable
+  if (!LittleFS.begin())
+  {
+    USBSerial.println("Failed to mount file system");
+    if (!formatLittleFS())
+    {
+      USBSerial.println("Failed to format file system - hardware issues!");
+      return false;
+    }
+  }
+}
 
 
+void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
+    USBSerial.printf("Listing directory: %s\r\n", dirname);
+
+    File root = fs.open(dirname);
+    if(!root){
+        USBSerial.println("- failed to open directory");
+        return;
+    }
+    if(!root.isDirectory()){
+        USBSerial.println(" - not a directory");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while(file){
+        if(file.isDirectory()){
+            USBSerial.print("  DIR : ");
+            USBSerial.println(file.name());
+            if(levels){
+                listDir(fs, file.path(), levels -1);
+            }
+        } else {
+            USBSerial.print("  FILE: ");
+            USBSerial.print(file.name());
+            USBSerial.print("\tSIZE: ");
+            USBSerial.println(file.size());
+        }
+        file = root.openNextFile();
+    }
+}
 
 
+void readFile(fs::FS &fs, const char * path){
+    USBSerial.printf("Reading file: %s\r\n", path);
 
+    File file = fs.open(path);
+    if(!file || file.isDirectory()){
+        USBSerial.println("- failed to open file for reading");
+        return;
+    }
+
+    USBSerial.println("- read from file:");
+    while(file.available()){
+        USBSerial.write(file.read());
+    }
+    file.close();
+}
 
 
 
@@ -465,7 +524,11 @@ void setup() {
     USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
 
-    saveConfig();
+    // saveConfig();
+
+    mountFS();
+    listDir(LittleFS, "/", 1); // List the directories up to one level beginning at the root directory
+
 
     // readConfig();
 
