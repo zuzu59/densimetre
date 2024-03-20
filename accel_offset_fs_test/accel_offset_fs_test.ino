@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf240318.1846
+// zf2403120.1335
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -24,7 +24,7 @@
 // https://github.com/dawidchyrzynski/arduino-home-assistant/blob/main/examples/sensor-integer/sensor-integer.ino
 
 
-#define DEBUG true
+// #define DEBUG true
 
 
 
@@ -44,6 +44,7 @@
 #include <FS.h>          //this needs to be first
 #include <LittleFS.h>
 #include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
+
 #define CFGFILE "/config.json"
 
 struct iData
@@ -252,23 +253,9 @@ bool formatLittleFS()
 
 
 
-bool saveConfig()
-{
+bool saveConfig(){
   CONSOLE(F("saving config...\n"));
-
-  // if LittleFS is not usable
-  if (!LittleFS.begin())
-  {
-    USBSerial.println("Failed to mount file system");
-    if (!formatLittleFS())
-    {
-      USBSerial.println("Failed to format file system - hardware issues!");
-      return false;
-    }
-  }
-
   DynamicJsonDocument doc(2048);
-
   doc["Name"] = myData.name;
   // doc["Token"] = myData.token;
   doc["Sleep"] = myData.sleeptime;
@@ -311,12 +298,11 @@ bool saveConfig()
   {
     serializeJson(doc, configFile);
 #ifdef DEBUG
-    serializeJson(doc, Serial);
+    CONSOLELN(F("serializeJson..."));
+    serializeJson(doc, USBSerial);
 #endif
     configFile.flush();
     configFile.close();
-    // LittleFS.gc();
-    LittleFS.end();
     CONSOLELN(F("\nsaved successfully"));
     return true;
   }
@@ -426,20 +412,17 @@ bool readConfig()
 }
 
 
-bool mountFS()
-{
-  CONSOLE(F("saving config...\n"));
-
+bool mountFS(){
+  CONSOLE(F("mounting fs...\n"));
   // if LittleFS is not usable
-  if (!LittleFS.begin())
-  {
+  if (!LittleFS.begin()){
     USBSerial.println("Failed to mount file system");
-    if (!formatLittleFS())
-    {
+    if (!formatLittleFS()){
       USBSerial.println("Failed to format file system - hardware issues!");
       return false;
     }
   }
+  return true;
 }
 
 
@@ -493,7 +476,21 @@ void readFile(fs::FS &fs, const char * path){
 
 
 
+void writeFile(fs::FS &fs, const char * path, const char * message){
+    USBSerial.printf("Writing file: %s\r\n", path);
 
+    File file = fs.open(path, FILE_WRITE);
+    if(!file){
+        USBSerial.println("- failed to open file for writing");
+        return;
+    }
+    if(file.print(message)){
+        USBSerial.println("- file written");
+    } else {
+        USBSerial.println("- write failed");
+    }
+    file.close();
+}
 
 
 
@@ -510,25 +507,29 @@ void setup() {
     delay(500); 
     digitalWrite(LED_BUILTIN, LOW);
 
-    Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
+    // // initialize device
+    // Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
+    // USBSerial.println("Initializing I2C devices...");
+    // accelgyro.initialize();
+    // accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+    // accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+    // accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
+    // accelgyro.setTempSensorEnabled(true);
+    // // verify connection
+    // USBSerial.println("Testing device connections...");
+    // USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
-    // initialize device
-    USBSerial.println("Initializing I2C devices...");
-    accelgyro.initialize();
-    accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
-    accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
-    accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
-    accelgyro.setTempSensorEnabled(true);
-    // verify connection
-    USBSerial.println("Testing device connections...");
-    USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
-
-    // saveConfig();
 
     mountFS();
-    listDir(LittleFS, "/", 1); // List the directories up to one level beginning at the root directory
 
+    saveConfig();
+
+    // writeFile(LittleFS, "/hello1.txt", "Hello1"); // Create a hello1.txt file with the content "Hello1"
+
+    listDir(LittleFS, "/", 0); // List the directories up to one level beginning at the root directory
+
+    readFile(LittleFS, "/config.json"); // Read the complete file
 
     // readConfig();
 
@@ -551,7 +552,7 @@ void setup() {
     // USBSerial.println("\n\nConnect MQTT !\n");
     // ConnectMQTT();
 
-    USBSerial.println("C'est parti !\n");
+    USBSerial.println("\nC'est parti !\n");
 }
 
 
@@ -561,7 +562,7 @@ void loop() {
     digitalWrite(LED_BUILTIN, LOW);
 
     // read raw accel measurements from device
-    accelgyro.getAcceleration(&ax, &ay, &az);
+    // accelgyro.getAcceleration(&ax, &ay, &az);
 
     // Offset correction
     ax = ax+axOffset;
@@ -571,7 +572,7 @@ void loop() {
     // USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
 
     // Calculate Tilt
-    USBSerial.printf("inclinaison:%f\n", calculateTilt());
+    // USBSerial.printf("inclinaison:%f\n", calculateTilt());
 
 
 
