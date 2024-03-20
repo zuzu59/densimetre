@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1903
+// zf2403120.1920
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -420,6 +420,7 @@ void setup() {
     delay(500);
 
     // Calibration de l'accéléromètre si le btn EN est appuyé juste après le reset
+    pinMode(buttonPin, INPUT_PULLUP);
     if (digitalRead(buttonPin) == LOW) {
       // Calculate  offset
       calculateOffset();
