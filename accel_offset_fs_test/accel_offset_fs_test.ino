@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1514
+// zf2403120.1600
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -47,7 +47,7 @@
 struct iData{
   char name[33] = "Densimètre num 1";
   uint32_t sleeptime = 15 * 60;
-  int16_t Offset[6];
+  int16_t Offset[6];    //axOffsetInternal, ayOffsetInternal, azOffsetInternal, axOffset, ayOffset, azOffset
 };
 
 iData myData;
@@ -61,7 +61,6 @@ MPU6050 accelgyro;
 
 int16_t ax, ay, az;
 int16_t axOffset, ayOffset, azOffset;
-int16_t gx, gy, gz;
 
 
 // // WIFI
@@ -148,50 +147,24 @@ int16_t gx, gy, gz;
 void calculateOffset() {
     USBSerial.println("Updating internal sensor offsets...");
 
-    USBSerial.print("Internal sensor offsets: ");
-    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t");
-    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t");
-    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t");
-    USBSerial.print("\n");
+    USBSerial.println("Au boot...");
+    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", accelgyro.getXAccelOffset(), accelgyro.getYAccelOffset(), accelgyro.getZAccelOffset());
 
-    USBSerial.println("Avant...");
-    axOffset = 0;
-    ayOffset = 0;
-    azOffset = 0;
-
-    accelgyro.setXAccelOffset(axOffset);
-    accelgyro.setYAccelOffset(ayOffset);
-    accelgyro.setZAccelOffset(azOffset);
-
-    USBSerial.print("Internal sensor offsets: ");
-    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t");
-    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t");
-    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t");
-    USBSerial.print("\n");
-    
+    USBSerial.println("Avant calibration...");    accelgyro.setXAccelOffset(0);   accelgyro.setYAccelOffset(0);   accelgyro.setZAccelOffset(0);
+    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", accelgyro.getXAccelOffset(), accelgyro.getYAccelOffset(), accelgyro.getZAccelOffset());
     accelgyro.getAcceleration(&ax, &ay, &az);
-    USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
+    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
 
-    USBSerial.println("Après...");
+    USBSerial.println("Après calibration...");
     accelgyro.CalibrateAccel(6);
-
-    USBSerial.print("Internal sensor offsets: ");
-    USBSerial.print(accelgyro.getXAccelOffset()); USBSerial.print("\t");
-    USBSerial.print(accelgyro.getYAccelOffset()); USBSerial.print("\t");
-    USBSerial.print(accelgyro.getZAccelOffset()); USBSerial.print("\t");
-    USBSerial.print("\n");
-
+    myData.Offset[0] =accelgyro.getXAccelOffset();    myData.Offset[1] =accelgyro.getYAccelOffset();    myData.Offset[2] =accelgyro.getZAccelOffset();
+    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", myData.Offset[0], myData.Offset[1], myData.Offset[2]);
     accelgyro.getAcceleration(&ax, &ay, &az);
-    axOffset = -ax;
-    ayOffset = -ay;
-    azOffset = -az;
-
-    ax = ax+axOffset;
-    ay = ay+ayOffset;
-    az = az+azOffset;
-
-    // accelgyro.getAcceleration(&ax, &ay, &az);
-    USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
+    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
+    axOffset = -ax;   ayOffset = -ay;   azOffset = -az;
+    myData.Offset[3] = axOffset;  myData.Offset[4] = ayOffset;  myData.Offset[5] = azOffset;
+    ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
+    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
     USBSerial.println("End of updating internal sensor offsets...");
 }
 
@@ -451,7 +424,7 @@ void writeFile(fs::FS &fs, const char * path, const char * message){
 
 void setup() {
     USBSerial.begin(19200);
-    USBSerial.setDebugOutput(true);       //pour voir les messages de debug sur la console série !
+    USBSerial.setDebugOutput(true);       //pour voir les messages de debug des libs sur la console série !
     delay(3000);  //le temps de passer sur la Serial Monitor ;-)
     USBSerial.println("\n\n\n\n**************************************\nCa commence !\n");
 
@@ -460,17 +433,22 @@ void setup() {
     delay(500); 
     digitalWrite(LED, LOW);
 
-    // // initialize device
-    // Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
-    // USBSerial.println("Initializing I2C devices...");
-    // accelgyro.initialize();
-    // accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
-    // accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
-    // accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
-    // accelgyro.setTempSensorEnabled(true);
-    // // verify connection
-    // USBSerial.println("Testing device connections...");
-    // USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+    // initialize device
+    Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
+    USBSerial.println("Initializing I2C devices...");
+    accelgyro.initialize();
+    accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+    accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+    accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
+    accelgyro.setTempSensorEnabled(true);
+    // verify connection
+    USBSerial.println("Testing device connections...");
+    USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+
+    delay(500);
+    // Calculate  offset
+    calculateOffset();
+
 
     mountFS();
     saveConfig();
@@ -481,9 +459,6 @@ void setup() {
     readFile(LittleFS, "/config.json"); // Read the complete file
 
     // readConfig();
-
-
-
 
 
     // delay(500);
