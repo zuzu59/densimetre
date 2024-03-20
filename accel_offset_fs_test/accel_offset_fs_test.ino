@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1603
+// zf2403120.1725
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -29,7 +29,9 @@
 
 
 // General
-# define LED 7
+const int ledPin = 7;    // the number of the LED pin
+const int buttonPin = 9;  // the number of the pushbutton pin
+
 // int sensorPin1 = 1;   // select the input pin for the sensor 1
 // long sensorValue1 = 0;  // variable to store the value coming from the sensor 1
 // int sensorPin2 = 3;   // select the input pin for the sensor 2
@@ -418,29 +420,32 @@ void setup() {
     delay(3000);  //le temps de passer sur la Serial Monitor ;-)
     USBSerial.println("\n\n\n\n**************************************\nCa commence !\n");
 
-    pinMode(LED, OUTPUT);
-    digitalWrite(LED, HIGH);
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, HIGH);
     delay(500); 
-    digitalWrite(LED, LOW);
+    digitalWrite(ledPin, LOW);
 
-    // initialize device
+    // initialize accelerator sensor
     Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
-    USBSerial.println("Initializing I2C devices...");
+    USBSerial.println("Initializing accelerator sensor...");
     accelgyro.initialize();
     accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
     accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
     accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
     accelgyro.setTempSensorEnabled(true);
     // verify connection
-    USBSerial.println("Testing device connections...");
-    USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
-
+    USBSerial.println("Testing accelerator sensor connections...");
+    USBSerial.println(accelgyro.testConnection() ? "Accelerator sensor connection successful" : "Accelerator sensor connection failed");
     delay(500);
 
-    // // Calculate  offset
-    // calculateOffset();
-    // // Save offset into config
-    // saveConfig();
+    if (digitalRead(buttonPin) == LOW) {
+      // Calculate  offset
+      calculateOffset();
+      // Save offset into config
+      saveConfig();
+    }
+
+
 
 #ifdef DEBUG
     mountFS();
@@ -459,7 +464,7 @@ void setup() {
 
     // USBSerial.println("Connect WIFI !");
     // ConnectWiFi();
-    // digitalWrite(LED, HIGH);
+    // digitalWrite(ledPin, HIGH);
     // delay(500); 
 
     // USBSerial.println("\n\nConnect MQTT !\n");
@@ -470,9 +475,9 @@ void setup() {
 
 
 void loop() {
-    digitalWrite(LED, HIGH);
+    digitalWrite(ledPin, HIGH);
     delay(100); 
-    digitalWrite(LED, LOW);
+    digitalWrite(ledPin, LOW);
 
     // read raw accel measurements from device
     // accelgyro.getAcceleration(&ax, &ay, &az);
@@ -502,6 +507,13 @@ void loop() {
     // USBSerial.printf("sensor1:%d,sensor2:%d\n", sensorValue1, sensorValue2);
 
     // delay(PUBLISH_INTERVAL);
-    delay(300000);
+
+
+
+
+
+
+
+    delay(100000);
 }
 
