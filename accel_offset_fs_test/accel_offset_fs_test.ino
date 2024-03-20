@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1440
+// zf2403120.1506
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -47,31 +47,10 @@
 
 #define CFGFILE "/config.json"
 
-struct iData
-{
-  // char token[TKIDSIZE * 2];
-  char name[33] = "";
-  // char server[DNSSIZE];
-  // char uri[DNSSIZE];
-  // char username[TKIDSIZE];
-  // char password[DNSSIZE];
-  // char job[TKIDSIZE] = "ispindel";
-  // char instance[TKIDSIZE] = "000";
-  // char polynominal[1000] = "-0.00031*tilt^2+0.557*tilt-14.054";
-  // String ssid;
-  // String psk;
-  uint8_t api;
+struct iData{
+  char name[33] = "Densimètre num 1";
   uint32_t sleeptime = 15 * 60;
-  uint16_t port = 80;
-  uint32_t channel;
-  // float vfact = ADCDIVISOR;
   int16_t Offset[6];
-  uint8_t tempscale = TEMP_CELSIUS;
-  int8_t OWpin = -1;
-#if API_MQTT_HASSIO
-  bool hassio = false;
-#endif
-  bool usehttps = false;
 };
 
 iData myData;
@@ -242,7 +221,7 @@ float calculateTilt() {
 
 bool formatLittleFS()
 {
-  CONSOLE(F("\nneed to format LittleFS: "));
+  CONSOLE("\nneed to format LittleFS: ");
   LittleFS.end();
   LittleFS.begin();
   CONSOLELN(LittleFS.format());
@@ -254,49 +233,21 @@ bool formatLittleFS()
 
 
 bool saveConfig(){
-  CONSOLE(F("saving config...\n"));
+#ifdef DEBUG
+  CONSOLELN("saving config...");
+#endif
   JsonDocument doc;
   doc["Name"] = myData.name;
-  // doc["Token"] = myData.token;
   doc["Sleep"] = myData.sleeptime;
-  // first reboot is for test
-  myData.sleeptime = 1;
-  // doc["Server"] = myData.server;
-  doc["API"] = myData.api;
-  doc["Port"] = myData.port;
-  doc["Channel"] = myData.channel;
-  // doc["URI"] = myData.uri;
-  // doc["Username"] = myData.username;
-  // doc["Password"] = myData.password;
-  // doc["Job"] = myData.job;
-  // doc["Instance"] = myData.instance;
-#if API_MQTT_HASSIO
-  doc["Hassio"] = myData.hassio;
-#endif
-  doc["UseHTTPS"] = myData.usehttps;
-  // doc["Vfact"] = myData.vfact;
-  doc["TS"] = myData.tempscale;
-  doc["OWpin"] = myData.OWpin;
-  // doc["POLY"] = myData.polynominal;
-  // doc["SSID"] = WiFi.SSID();
-  // doc["PSK"] = WiFi.psk();
-
-
-
   JsonArray array = doc["Offset"].to<JsonArray>();
   for (auto &&i : myData.Offset)
   {
     array.add(i);
   }
-
-
-
-
-
   File configFile = LittleFS.open(CFGFILE, "w");
   if (!configFile)
   {
-    CONSOLELN(F("failed to open config file for writing"));
+    CONSOLELN("failed to open config file for writing");
     LittleFS.end();
     return false;
   }
@@ -304,12 +255,14 @@ bool saveConfig(){
   {
     serializeJson(doc, configFile);
 #ifdef DEBUG
-    CONSOLELN(F("serializeJson..."));
+    CONSOLELN("serializeJson...");
     serializeJson(doc, USBSerial);
 #endif
     configFile.flush();
     configFile.close();
-    CONSOLELN(F("\nsaved successfully"));
+#ifdef DEBUG
+    CONSOLELN("\nsaved successfully");
+#endif
     return true;
   }
 }
@@ -319,29 +272,29 @@ bool saveConfig(){
 
 bool readConfig()
 {
-  CONSOLE(F("mounting FS..."));
+  CONSOLE("mounting FS...");
 
   if (!LittleFS.begin())
   {
-    CONSOLELN(F(" ERROR: failed to mount FS!"));
+    CONSOLELN(" ERROR: failed to mount FS!");
     return false;
   }
   else
   {
-    CONSOLELN(F(" mounted!"));
+    CONSOLELN(" mounted!");
     if (!LittleFS.exists(CFGFILE))
     {
-      CONSOLELN(F("ERROR: failed to load json config"));
+      CONSOLELN("ERROR: failed to load json config");
       return false;
     }
     else
     {
       // file exists, reading and loading
-      CONSOLELN(F("reading config file"));
+      CONSOLELN("reading config file");
       File configFile = LittleFS.open(CFGFILE, "r");
       if (!configFile)
       {
-        CONSOLELN(F("ERROR: unable to open config file"));
+        CONSOLELN("ERROR: unable to open config file");
       }
       else
       {
@@ -350,7 +303,7 @@ bool readConfig()
         DeserializationError error = deserializeJson(doc, configFile);
         if (error)
         {
-          CONSOLE(F("deserializeJson() failed: "));
+          CONSOLE("deserializeJson() failed: ");
           CONSOLELN(error.c_str());
         }
         else
@@ -405,7 +358,7 @@ bool readConfig()
             }
           }
 
-          CONSOLELN(F("parsed config:"));
+          CONSOLELN("parsed config:");
 #ifdef DEBUG
           serializeJson(doc, Serial);
           CONSOLELN();
@@ -419,7 +372,9 @@ bool readConfig()
 
 
 bool mountFS(){
-  CONSOLE(F("mounting fs...\n"));
+#ifdef DEBUG
+  CONSOLE("mounting fs...\n");
+#endif
   // if LittleFS is not usable
   if (!LittleFS.begin()){
     USBSerial.println("Failed to mount file system");
@@ -465,15 +420,17 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
 
 
 void readFile(fs::FS &fs, const char * path){
+#ifdef DEBUG
     USBSerial.printf("Reading file: %s\r\n", path);
-
+#endif
     File file = fs.open(path);
     if(!file || file.isDirectory()){
         USBSerial.println("- failed to open file for reading");
         return;
     }
-
+#ifdef DEBUG
     USBSerial.println("- read from file:");
+#endif
     while(file.available()){
         USBSerial.write(file.read());
     }
@@ -533,7 +490,9 @@ void setup() {
 
     // writeFile(LittleFS, "/hello1.txt", "Hello1"); // Create a hello1.txt file with the content "Hello1"
 
+#ifdef DEBUG
     listDir(LittleFS, "/", 0); // List the directories up to one level beginning at the root directory
+#endif
 
     readFile(LittleFS, "/config.json"); // Read the complete file
 
