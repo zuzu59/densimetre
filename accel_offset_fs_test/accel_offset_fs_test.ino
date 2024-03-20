@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1600
+// zf2403120.1603
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -24,7 +24,7 @@
 // https://github.com/dawidchyrzynski/arduino-home-assistant/blob/main/examples/sensor-integer/sensor-integer.ino
 
 
-// #define DEBUG true
+#define DEBUG true
 
 
 
@@ -144,6 +144,21 @@ int16_t axOffset, ayOffset, azOffset;
 
 
 
+
+void readAcceleration() {
+#ifdef DEBUG
+  CONSOLELN("Read acceleration...");
+#endif
+  accelgyro.getAcceleration(&ax, &ay, &az);
+  ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
+  USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
+}
+
+
+
+
+
+
 void calculateOffset() {
     USBSerial.println("Updating internal sensor offsets...");
 
@@ -161,12 +176,26 @@ void calculateOffset() {
     USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", myData.Offset[0], myData.Offset[1], myData.Offset[2]);
     accelgyro.getAcceleration(&ax, &ay, &az);
     USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
-    axOffset = -ax;   ayOffset = -ay;   azOffset = -az;
-    myData.Offset[3] = axOffset;  myData.Offset[4] = ayOffset;  myData.Offset[5] = azOffset;
+    myData.Offset[3] = -ax;  myData.Offset[4] = -ay;  myData.Offset[5] = -az;
+    axOffset = myData.Offset[3];   ayOffset = myData.Offset[4];   azOffset = myData.Offset[5];
     ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
     USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
     USBSerial.println("End of updating internal sensor offsets...");
 }
+
+
+
+
+void setOffset() {
+#ifdef DEBUG
+  CONSOLELN("Set accelerator offset ...");
+  USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", myData.Offset[0], myData.Offset[1], myData.Offset[2]);
+  USBSerial.printf("Sensor offsets: %d\t%d\t%d\n", myData.Offset[3], myData.Offset[4], myData.Offset[5]);
+#endif
+  axOffset = myData.Offset[3];   ayOffset = myData.Offset[4];   azOffset = myData.Offset[5];
+}
+
+
 
 
 
@@ -225,6 +254,7 @@ bool saveConfig(){
   {
     array.add(i);
   }
+  mountFS();
   File configFile = LittleFS.open(CFGFILE, "w");
   if (!configFile)
   {
@@ -253,7 +283,6 @@ bool saveConfig(){
 
 bool readConfig(){
   CONSOLE("mounting FS...");
-
   if (!LittleFS.begin())
   {
     CONSOLELN(" ERROR: failed to mount FS!");
@@ -278,7 +307,6 @@ bool readConfig(){
       }
       else
       {
-        // size_t size = configFile.size();
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, configFile);
         if (error)
@@ -290,46 +318,8 @@ bool readConfig(){
         {
           if (doc.containsKey("Name"))
             strcpy(myData.name, doc["Name"]);
-          // if (doc.containsKey("Token"))
-          //   strcpy(myData.token, doc["Token"]);
-          // if (doc.containsKey("Server"))
-          //   strcpy(myData.server, doc["Server"]);
-          // if (doc.containsKey("Sleep"))
-          //   myData.sleeptime = doc["Sleep"];
-          // if (doc.containsKey("API"))
-          //   myData.api = doc["API"];
-          // if (doc.containsKey("Port"))
-          //   myData.port = doc["Port"];
-          // if (doc.containsKey("Channel"))
-          //   myData.channel = doc["Channel"];
-          // if (doc.containsKey("URI"))
-          //   strcpy(myData.uri, doc["URI"]);
-          // if (doc.containsKey("Username"))
-          //   strcpy(myData.username, doc["Username"]);
-          // if (doc.containsKey("Password"))
-          //   strcpy(myData.password, doc["Password"]);
-          // if (doc.containsKey("Job"))
-          //   strcpy(myData.job, doc["Job"]);
-          // if (doc.containsKey("Instance"))
-          //   strcpy(myData.instance, doc["Instance"]);
-          // if (doc.containsKey("Vfact"))
-          //   myData.vfact = doc["Vfact"];
-          // if (doc.containsKey("TS"))
-          //   myData.tempscale = doc["TS"];
-          // if (doc.containsKey("OWpin"))
-          //   myData.OWpin = doc["OWpin"];
-          // if (doc.containsKey("SSID"))
-          //   myData.ssid = (const char *)doc["SSID"];
-          // if (doc.containsKey("PSK"))
-          //   myData.psk = (const char *)doc["PSK"];
-          // if (doc.containsKey("POLY"))
-          //   strcpy(myData.polynominal, doc["POLY"]);
-// #if API_MQTT_HASSIO
-//           if (doc.containsKey("Hassio"))
-//             myData.hassio = doc["Hassio"];
-// #endif
-          // if (doc.containsKey("UseHTTPS"))
-          //   myData.usehttps = doc["UseHTTPS"];
+          if (doc.containsKey("Sleep"))
+            myData.sleeptime = doc["Sleep"];
           if (doc.containsKey("Offset"))
           {
             for (size_t i = 0; i < (sizeof(myData.Offset) / sizeof(*myData.Offset)); i++)
@@ -337,11 +327,10 @@ bool readConfig(){
               myData.Offset[i] = doc["Offset"][i];
             }
           }
-
-          CONSOLELN("parsed config:");
 #ifdef DEBUG
-          serializeJson(doc, Serial);
-          CONSOLELN();
+          CONSOLELN("parsed config:");
+          serializeJson(doc, USBSerial);
+          CONSOLELN("");
 #endif
         }
       }
@@ -398,6 +387,7 @@ void readFile(fs::FS &fs, const char * path){
     while(file.available()){
         USBSerial.write(file.read());
     }
+    USBSerial.println("");
     file.close();
 }
 
@@ -446,24 +436,23 @@ void setup() {
     USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
     delay(500);
-    // Calculate  offset
-    calculateOffset();
 
-
-    mountFS();
-    saveConfig();
-#ifdef DEBUG
-    listDir(LittleFS, "/", 0); // List the directories up to one level beginning at the root directory
-#endif
-
-    readFile(LittleFS, "/config.json"); // Read the complete file
-
-    // readConfig();
-
-
-    // delay(500);
     // // Calculate  offset
     // calculateOffset();
+    // // Save offset into config
+    // saveConfig();
+
+#ifdef DEBUG
+    mountFS();
+    listDir(LittleFS, "/", 0); // List the directories up to one level beginning at the root directory
+    readFile(LittleFS, "/config.json"); // Read the complete file
+#endif
+
+    readConfig();
+    setOffset();
+
+    readAcceleration();
+
 
 
 
