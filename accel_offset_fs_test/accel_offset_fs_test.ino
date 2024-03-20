@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1506
+// zf2403120.1514
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -37,9 +37,6 @@
 #define TEMP_CELSIUS 0
 
 
-
-
-
 // File system FS esp32-c3
 #include <FS.h>          //this needs to be first
 #include <LittleFS.h>
@@ -56,11 +53,6 @@ struct iData{
 iData myData;
 
 
-
-
-
-
-
 // Accéléromètre MPU6050
 #include "MPU6050.h"
 #include "Wire.h"
@@ -72,29 +64,9 @@ int16_t axOffset, ayOffset, azOffset;
 int16_t gx, gy, gz;
 
 
-
 // // WIFI
 // #include <WiFi.h>
 // #include "secrets.h"
-
-
-// // MQTT
-// #include <ArduinoHA.h>
-// #define DEVICE_NAME     "gazMQ136_137"
-// #define SENSOR_NAME1     "H2S"
-// #define SENSOR_NAME2     "NH3"
-
-#define PUBLISH_INTERVAL  40000 // how often image should be published to HA (milliseconds)
-
-// WiFiClient client;
-// HADevice device(DEVICE_NAME);                // c'est le IDS du device, il doit être unique !
-// HAMqtt mqtt(client, device);
-// unsigned long lastUpdateAt = 0;
-
-// // You should define your own ID.
-// HASensorNumber Sensor1(SENSOR_NAME1);           // c'est le nom du sensor sur MQTT !
-// HASensorNumber Sensor2(SENSOR_NAME2);           // c'est le nom du sensor sur MQTT !
-
 
 // static void ConnectWiFi() {
 //     USBSerial.printf("WIFI_SSID: %s\nWIFI_PASSWORD: %s\n", WIFI_SSID, WIFI_PASSWORD);
@@ -115,6 +87,23 @@ int16_t gx, gy, gz;
 // }
 
 
+// // MQTT
+// #include <ArduinoHA.h>
+// #define DEVICE_NAME     "gazMQ136_137"
+// #define SENSOR_NAME1     "H2S"
+// #define SENSOR_NAME2     "NH3"
+
+#define PUBLISH_INTERVAL  40000 // how often image should be published to HA (milliseconds)
+
+// WiFiClient client;
+// HADevice device(DEVICE_NAME);                // c'est le IDS du device, il doit être unique !
+// HAMqtt mqtt(client, device);
+// unsigned long lastUpdateAt = 0;
+
+// // You should define your own ID.
+// HASensorNumber Sensor1(SENSOR_NAME1);           // c'est le nom du sensor sur MQTT !
+// HASensorNumber Sensor2(SENSOR_NAME2);           // c'est le nom du sensor sur MQTT !
+
 // static void ConnectMQTT() {
 //    device.setName(DEVICE_NAME);                // c'est le nom du device sur Home Assistant !
 //     // device.setSoftwareVersion("1.0.0");
@@ -131,6 +120,7 @@ int16_t gx, gy, gz;
 //     mqtt.begin(BROKER_ADDR, BROKER_USERNAME, BROKER_PASSWORD);
 //     USBSerial.println("MQTT connected");
 // }
+
 
 // Redirection de la console
 #define CONSOLE(...)                                                                                                   \
@@ -150,6 +140,9 @@ int16_t gx, gy, gz;
   {                                                                                                                    \
     USBSerial.printf(__VA_ARGS__);                                                                                       \
   } while (0)
+
+
+
 
 
 void calculateOffset() {
@@ -229,6 +222,21 @@ bool formatLittleFS()
 }
 
 
+bool mountFS(){
+#ifdef DEBUG
+  CONSOLE("mounting fs...\n");
+#endif
+  // if LittleFS is not usable
+  if (!LittleFS.begin()){
+    USBSerial.println("Failed to mount file system");
+    if (!formatLittleFS()){
+      USBSerial.println("Failed to format file system - hardware issues!");
+      return false;
+    }
+  }
+  return true;
+}
+
 
 
 
@@ -270,8 +278,7 @@ bool saveConfig(){
 
 
 
-bool readConfig()
-{
+bool readConfig(){
   CONSOLE("mounting FS...");
 
   if (!LittleFS.begin())
@@ -371,25 +378,10 @@ bool readConfig()
 }
 
 
-bool mountFS(){
-#ifdef DEBUG
-  CONSOLE("mounting fs...\n");
-#endif
-  // if LittleFS is not usable
-  if (!LittleFS.begin()){
-    USBSerial.println("Failed to mount file system");
-    if (!formatLittleFS()){
-      USBSerial.println("Failed to format file system - hardware issues!");
-      return false;
-    }
-  }
-  return true;
-}
 
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     USBSerial.printf("Listing directory: %s\r\n", dirname);
-
     File root = fs.open(dirname);
     if(!root){
         USBSerial.println("- failed to open directory");
@@ -399,7 +391,6 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
         USBSerial.println(" - not a directory");
         return;
     }
-
     File file = root.openNextFile();
     while(file){
         if(file.isDirectory()){
@@ -441,7 +432,6 @@ void readFile(fs::FS &fs, const char * path){
 
 void writeFile(fs::FS &fs, const char * path, const char * message){
     USBSerial.printf("Writing file: %s\r\n", path);
-
     File file = fs.open(path, FILE_WRITE);
     if(!file){
         USBSerial.println("- failed to open file for writing");
@@ -482,14 +472,8 @@ void setup() {
     // USBSerial.println("Testing device connections...");
     // USBSerial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
-
-
     mountFS();
-
     saveConfig();
-
-    // writeFile(LittleFS, "/hello1.txt", "Hello1"); // Create a hello1.txt file with the content "Hello1"
-
 #ifdef DEBUG
     listDir(LittleFS, "/", 0); // List the directories up to one level beginning at the root directory
 #endif
