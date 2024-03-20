@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1335
+// zf2403120.1440
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -29,7 +29,7 @@
 
 
 // General
-# define LED_BUILTIN 7
+# define LED 7
 // int sensorPin1 = 1;   // select the input pin for the sensor 1
 // long sensorValue1 = 0;  // variable to store the value coming from the sensor 1
 // int sensorPin2 = 3;   // select the input pin for the sensor 2
@@ -255,7 +255,7 @@ bool formatLittleFS()
 
 bool saveConfig(){
   CONSOLE(F("saving config...\n"));
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc;
   doc["Name"] = myData.name;
   // doc["Token"] = myData.token;
   doc["Sleep"] = myData.sleeptime;
@@ -281,11 +281,17 @@ bool saveConfig(){
   // doc["SSID"] = WiFi.SSID();
   // doc["PSK"] = WiFi.psk();
 
-  JsonArray array = doc.createNestedArray("Offset");
+
+
+  JsonArray array = doc["Offset"].to<JsonArray>();
   for (auto &&i : myData.Offset)
   {
     array.add(i);
   }
+
+
+
+
 
   File configFile = LittleFS.open(CFGFILE, "w");
   if (!configFile)
@@ -339,8 +345,8 @@ bool readConfig()
       }
       else
       {
-        size_t size = configFile.size();
-        DynamicJsonDocument doc(size * 3);
+        // size_t size = configFile.size();
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, configFile);
         if (error)
         {
@@ -502,10 +508,10 @@ void setup() {
     delay(3000);  //le temps de passer sur la Serial Monitor ;-)
     USBSerial.println("\n\n\n\n**************************************\nCa commence !\n");
 
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, HIGH);
+    pinMode(LED, OUTPUT);
+    digitalWrite(LED, HIGH);
     delay(500); 
-    digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(LED, LOW);
 
     // // initialize device
     // Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
@@ -546,7 +552,7 @@ void setup() {
 
     // USBSerial.println("Connect WIFI !");
     // ConnectWiFi();
-    // digitalWrite(LED_BUILTIN, HIGH);
+    // digitalWrite(LED, HIGH);
     // delay(500); 
 
     // USBSerial.println("\n\nConnect MQTT !\n");
@@ -557,9 +563,9 @@ void setup() {
 
 
 void loop() {
-    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(LED, HIGH);
     delay(100); 
-    digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(LED, LOW);
 
     // read raw accel measurements from device
     // accelgyro.getAcceleration(&ax, &ay, &az);
