@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1847
+// zf2403120.1903
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -365,7 +365,9 @@ void readAcceleration() {
 #endif
   accelgyro.getAcceleration(&ax, &ay, &az);
   ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
+#ifdef DEBUG
   USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
+#endif
 }
 
 
@@ -434,7 +436,6 @@ void setup() {
     readConfig();
     setOffset();
 
-    readAcceleration();
 
 
 
@@ -457,18 +458,11 @@ void loop() {
     delay(100); 
     digitalWrite(ledPin, LOW);
 
-    // read raw accel measurements from device
-    // accelgyro.getAcceleration(&ax, &ay, &az);
-
-    // Offset correction
-    ax = ax+axOffset;
-    ay = ay+ayOffset;
-    az = az+azOffset;
-
+    readAcceleration();
     // USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
 
     // Calculate Tilt
-    // USBSerial.printf("inclinaison:%f\n", calculateTilt());
+    USBSerial.printf("inclinaison:%f\n", calculateTilt());
 
 
 
@@ -486,12 +480,6 @@ void loop() {
 
     // delay(PUBLISH_INTERVAL);
 
-
-
-
-
-
-
-    delay(100000);
+    delay(100);
 }
 
