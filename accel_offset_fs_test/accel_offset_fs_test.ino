@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1725
+// zf2403120.1847
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -24,7 +24,8 @@
 // https://github.com/dawidchyrzynski/arduino-home-assistant/blob/main/examples/sensor-integer/sensor-integer.ino
 
 
-#define DEBUG true
+// #define DEBUG true
+// #undef DEBUG
 
 
 
@@ -143,79 +144,6 @@ int16_t axOffset, ayOffset, azOffset;
   } while (0)
 
 
-
-
-
-
-void readAcceleration() {
-#ifdef DEBUG
-  CONSOLELN("Read acceleration...");
-#endif
-  accelgyro.getAcceleration(&ax, &ay, &az);
-  ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
-  USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
-}
-
-
-
-
-
-
-void calculateOffset() {
-    USBSerial.println("Updating internal sensor offsets...");
-
-    USBSerial.println("Au boot...");
-    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", accelgyro.getXAccelOffset(), accelgyro.getYAccelOffset(), accelgyro.getZAccelOffset());
-
-    USBSerial.println("Avant calibration...");    accelgyro.setXAccelOffset(0);   accelgyro.setYAccelOffset(0);   accelgyro.setZAccelOffset(0);
-    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", accelgyro.getXAccelOffset(), accelgyro.getYAccelOffset(), accelgyro.getZAccelOffset());
-    accelgyro.getAcceleration(&ax, &ay, &az);
-    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
-
-    USBSerial.println("Après calibration...");
-    accelgyro.CalibrateAccel(6);
-    myData.Offset[0] =accelgyro.getXAccelOffset();    myData.Offset[1] =accelgyro.getYAccelOffset();    myData.Offset[2] =accelgyro.getZAccelOffset();
-    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", myData.Offset[0], myData.Offset[1], myData.Offset[2]);
-    accelgyro.getAcceleration(&ax, &ay, &az);
-    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
-    myData.Offset[3] = -ax;  myData.Offset[4] = -ay;  myData.Offset[5] = -az;
-    axOffset = myData.Offset[3];   ayOffset = myData.Offset[4];   azOffset = myData.Offset[5];
-    ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
-    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
-    USBSerial.println("End of updating internal sensor offsets...");
-}
-
-
-
-
-void setOffset() {
-#ifdef DEBUG
-  CONSOLELN("Set accelerator offset ...");
-  USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", myData.Offset[0], myData.Offset[1], myData.Offset[2]);
-  USBSerial.printf("Sensor offsets: %d\t%d\t%d\n", myData.Offset[3], myData.Offset[4], myData.Offset[5]);
-#endif
-  axOffset = myData.Offset[3];   ayOffset = myData.Offset[4];   azOffset = myData.Offset[5];
-}
-
-
-
-
-
-float calculateTilt() {
-
-  if (ax == 0 && ay == 0 && az == 0)
-    return 0.f;
-
-  // return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI);
-  return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI * 2) -90 ;
-}
-
-
-
-
-
-
-
 bool formatLittleFS()
 {
   CONSOLE("\nneed to format LittleFS: ");
@@ -240,8 +168,6 @@ bool mountFS(){
   }
   return true;
 }
-
-
 
 
 bool saveConfig(){
@@ -281,10 +207,11 @@ bool saveConfig(){
 }
 
 
-
-
 bool readConfig(){
+#ifdef DEBUG
+  CONSOLELN("read config...");
   CONSOLE("mounting FS...");
+#endif
   if (!LittleFS.begin())
   {
     CONSOLELN(" ERROR: failed to mount FS!");
@@ -292,7 +219,9 @@ bool readConfig(){
   }
   else
   {
+#ifdef DEBUG
     CONSOLELN(" mounted!");
+#endif
     if (!LittleFS.exists(CFGFILE))
     {
       CONSOLELN("ERROR: failed to load json config");
@@ -301,7 +230,9 @@ bool readConfig(){
     else
     {
       // file exists, reading and loading
+#ifdef DEBUG
       CONSOLELN("reading config file");
+#endif
       File configFile = LittleFS.open(CFGFILE, "r");
       if (!configFile)
       {
@@ -340,8 +271,6 @@ bool readConfig(){
   }
   return true;
 }
-
-
 
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
@@ -394,21 +323,61 @@ void readFile(fs::FS &fs, const char * path){
 }
 
 
+void calculateOffset() {
+    USBSerial.println("Updating internal sensor offsets...");
 
-void writeFile(fs::FS &fs, const char * path, const char * message){
-    USBSerial.printf("Writing file: %s\r\n", path);
-    File file = fs.open(path, FILE_WRITE);
-    if(!file){
-        USBSerial.println("- failed to open file for writing");
-        return;
-    }
-    if(file.print(message)){
-        USBSerial.println("- file written");
-    } else {
-        USBSerial.println("- write failed");
-    }
-    file.close();
+    USBSerial.println("Au boot...");
+    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", accelgyro.getXAccelOffset(), accelgyro.getYAccelOffset(), accelgyro.getZAccelOffset());
+
+    USBSerial.println("Avant calibration...");    accelgyro.setXAccelOffset(0);   accelgyro.setYAccelOffset(0);   accelgyro.setZAccelOffset(0);
+    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", accelgyro.getXAccelOffset(), accelgyro.getYAccelOffset(), accelgyro.getZAccelOffset());
+    accelgyro.getAcceleration(&ax, &ay, &az);
+    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
+
+    USBSerial.println("Après calibration...");
+    accelgyro.CalibrateAccel(6);
+    myData.Offset[0] =accelgyro.getXAccelOffset();    myData.Offset[1] =accelgyro.getYAccelOffset();    myData.Offset[2] =accelgyro.getZAccelOffset();
+    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", myData.Offset[0], myData.Offset[1], myData.Offset[2]);
+    accelgyro.getAcceleration(&ax, &ay, &az);
+    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
+    myData.Offset[3] = -ax;  myData.Offset[4] = -ay;  myData.Offset[5] = -az;
+    axOffset = myData.Offset[3];   ayOffset = myData.Offset[4];   azOffset = myData.Offset[5];
+    ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
+    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
+    USBSerial.println("End of updating internal sensor offsets...");
 }
+
+
+void setOffset() {
+#ifdef DEBUG
+  CONSOLELN("Set offset");
+  CONSOLELN("Set accelerator offset");
+  USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", myData.Offset[0], myData.Offset[1], myData.Offset[2]);
+  USBSerial.printf("Sensor offsets: %d\t%d\t%d\n", myData.Offset[3], myData.Offset[4], myData.Offset[5]);
+#endif
+  axOffset = myData.Offset[3];   ayOffset = myData.Offset[4];   azOffset = myData.Offset[5];
+}
+
+
+void readAcceleration() {
+#ifdef DEBUG
+  CONSOLELN("Read acceleration...");
+#endif
+  accelgyro.getAcceleration(&ax, &ay, &az);
+  ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
+  USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
+}
+
+
+float calculateTilt() {
+
+  if (ax == 0 && ay == 0 && az == 0)
+    return 0.f;
+
+  // return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI);
+  return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI * 2) -90 ;
+}
+
 
 
 
@@ -427,25 +396,34 @@ void setup() {
 
     // initialize accelerator sensor
     Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
+#ifdef DEBUG
     USBSerial.println("Initializing accelerator sensor...");
+#endif
     accelgyro.initialize();
     accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
     accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
     accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
     accelgyro.setTempSensorEnabled(true);
     // verify connection
+#ifdef DEBUG
     USBSerial.println("Testing accelerator sensor connections...");
-    USBSerial.println(accelgyro.testConnection() ? "Accelerator sensor connection successful" : "Accelerator sensor connection failed");
+#endif
+    if (accelgyro.testConnection()){
+#ifdef DEBUG
+      USBSerial.println("Accelerator sensor connection successful !");
+#endif
+    } else {
+      USBSerial.println("Accelerator sensor connection failed !");
+    }
     delay(500);
 
+    // Calibration de l'accéléromètre si le btn EN est appuyé juste après le reset
     if (digitalRead(buttonPin) == LOW) {
       // Calculate  offset
       calculateOffset();
       // Save offset into config
       saveConfig();
     }
-
-
 
 #ifdef DEBUG
     mountFS();
