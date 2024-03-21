@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403120.1920
+// zf2403121.1553
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -63,6 +63,7 @@ iData myData;
 MPU6050 accelgyro;
 
 int16_t ax, ay, az;
+const int16_t moyNbVal = 10 ;
 int16_t axOffset, ayOffset, azOffset;
 
 
@@ -359,6 +360,10 @@ void setOffset() {
 }
 
 
+
+// #define DEBUG true
+
+
 void readAcceleration() {
 #ifdef DEBUG
   CONSOLELN("Read acceleration...");
@@ -369,6 +374,27 @@ void readAcceleration() {
   USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
 #endif
 }
+
+
+void readAccelerationMoy() {
+#ifdef DEBUG
+  CONSOLELN("Read acceleration moyenne...");
+#endif
+  long axSum = 0, aySum = 0, azSum = 0;
+  for (size_t i = 0; i < moyNbVal; i++)
+  {
+    readAcceleration();
+    axSum = axSum + ax; aySum = aySum + ay; azSum = azSum + az; 
+  }
+  ax = axSum / moyNbVal; ay = aySum / moyNbVal; az = azSum / moyNbVal; 
+#ifdef DEBUG
+  USBSerial.printf("Acceleration moyenne: x:%d,y:%d,z:%d\n", ax, ay, az);
+#endif
+}
+
+
+#undef DEBUG
+
 
 
 float calculateTilt() {
@@ -459,7 +485,8 @@ void loop() {
     delay(100); 
     digitalWrite(ledPin, LOW);
 
-    readAcceleration();
+    // readAcceleration();
+    readAccelerationMoy();
     // USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
 
     // Calculate Tilt
@@ -481,6 +508,6 @@ void loop() {
 
     // delay(PUBLISH_INTERVAL);
 
-    delay(100);
+    delay(300);
 }
 
