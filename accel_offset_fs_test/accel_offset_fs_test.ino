@@ -3,7 +3,7 @@
 // Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
 //
-// zf2403121.1556
+// zf2403122.1858
 //
 // Utilisation:
 // Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
@@ -30,7 +30,7 @@
 
 
 // General
-const int ledPin = 7;    // the number of the LED pin
+const int ledPin = 8;    // the number of the LED pin
 const int buttonPin = 9;  // the number of the pushbutton pin
 
 // int sensorPin1 = 1;   // select the input pin for the sensor 1
