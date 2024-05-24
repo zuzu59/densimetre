@@ -2,7 +2,7 @@
 // Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-#define zVERSION "zf240524.1728"
+#define zVERSION "zf240524.2025"
 /*
 Utilisation:
 
@@ -586,7 +586,8 @@ void setup() {
 
 
 void loop() {
-
+  // OTA loop
+  server.handleClient();
 
     // readAcceleration();
     // readAccelerationMoy();
