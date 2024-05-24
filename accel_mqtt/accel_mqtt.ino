@@ -1,30 +1,52 @@
-// Tests de sauvetage et restauration de l'offset de l'accéléromètre dans le FS du esp32-c3
-// Comme on va utiliser le mode dsleep, c'est important de pouvoir sauvegarder l'état de l'offset
-// Envoie aussi le résultat des senseurs sur le mqtt pour home assistant (pas en fonction actuellement !)
-// ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres bords !
+// Tests du push de l'accéléromètre et de la sonde de température one wire sur mqtt
+// Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
+// ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-// zf2403122.1858
-//
-// Utilisation:
-// Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
-// 
-// Installation:
-// Pour l'accéléromètre, il faut installer la lib MPU6050 by Electrnoic Cats
-//  depuis le library manager de l'Arduino IDE
-//
-// Pour MQTT, il faut installer la lib (home-assistant-integration):
-// https://github.com/dawidchyrzynski/arduino-home-assistant
-//
-// Sources:
-// https://github.com/universam1/iSpindel/tree/master
-// https://components101.com/sensors/mpu6050-module
-// https://github.com/electroniccats/mpu6050
-// https://github.com/ElectronicCats/mpu6050/blob/master/examples/MPU6050_raw/MPU6050_raw.ino
+#define zVERSION "zf240524.1728"
+/*
+Utilisation:
 
-// https://github.com/dawidchyrzynski/arduino-home-assistant/blob/main/examples/sensor-integer/sensor-integer.ino
+Plus valable ! Au moment du Reset, il faut mettre le capteur en 'vertical' sur l'axe des Y, afin que l'inclinaison du capteur soit correcte
+
+Astuce:
+
+Installation:
+
+Pour les esp32-c3 super mini, il faut:
+ * choisir comme board ESP32C3 Dev Module
+ * disabled USB CDC On Boot et utiliser USBSerial. au lieu de Serial. pour la console !
+ * changer le schéma de la partition à Minimal SPIFFS (1.9MB APP with OTA/190kB SPIFFS)
+
+Pour le WiFiManager, il faut installer cette lib depuis le lib manager sur Arduino:
+https://github.com/tzapu/WiFiManager
+
+Pour l'accéléromètre, il faut installer la lib MPU6050 by Electrnoic Cats
+depuis le library manager de l'Arduino IDE
+
+Pour MQTT, il faut installer la lib (home-assistant-integration):
+https://github.com/dawidchyrzynski/arduino-home-assistant
+
+Pour JSON, il faut installer cette lib:
+https://github.com/bblanchon/ArduinoJson
+
+Sources:
+https://forum.fritzing.org/t/need-esp32-c3-super-mini-board-model/20561
+https://www.aliexpress.com/item/1005006005040320.html
+https://randomnerdtutorials.com/esp32-useful-wi-fi-functions-arduino
+https://dronebotworkshop.com/wifimanager/
+https://github.com/universam1/iSpindel/tree/master
+https://components101.com/sensors/mpu6050-module
+https://github.com/electroniccats/mpu6050
+https://github.com/ElectronicCats/mpu6050/blob/master/examples/MPU6050_raw/MPU6050_raw.ino
+https://lastminuteengineers.com/esp32-ota-web-updater-arduino-ide/
+https://github.com/dawidchyrzynski/arduino-home-assistant/blob/main/examples/sensor-integer/sensor-integer.ino
+https://chat.mistral.ai/    pour toute la partie API REST ᕗ
+*/
 
 
-// #define DEBUG true
+
+
+#define DEBUG true
 // #undef DEBUG
 
 
@@ -32,6 +54,12 @@
 // General
 const int ledPin = 8;    // the number of the LED pin
 const int buttonPin = 9;  // the number of the pushbutton pin
+float rrsiLevel = 0;      // variable to store the RRSI level
+const int zSonarPulseOn = 100;    // délai pour sonarPulse
+const int zSonarPulseOff = 200;    // délai pour sonarPulse
+const int zSonarPulseWait = 1000;    // délai pour sonarPulse
+byte zSonarPulseState = 1;    // état pour sonarPulse
+long zSonarPulseNextMillis = 0;    // état pour sonarPulse
 
 // int sensorPin1 = 1;   // select the input pin for the sensor 1
 // long sensorValue1 = 0;  // variable to store the value coming from the sensor 1
@@ -67,27 +95,78 @@ const int16_t moyNbVal = 10 ;
 int16_t axOffset, ayOffset, azOffset;
 
 
-// // WIFI
-// #include <WiFi.h>
-// #include "secrets.h"
+// Machine à état pour faire pulser deux fois la petite LED sans bloquer le système
+void sonarPulse(){
+  if (zSonarPulseNextMillis < millis()){
+    switch (zSonarPulseState){
+      // 1ère pulse allumée que l'on doit éteindre !
+      case 1:
+        digitalWrite(ledPin, HIGH);
+        zSonarPulseNextMillis = millis() + zSonarPulseOff;
+        zSonarPulseState = 2;
+        break;
+      // 1ère pulse éteinte que l'on doit allumer !
+      case 2:
+        digitalWrite(ledPin, LOW);
+        zSonarPulseNextMillis = millis() + zSonarPulseOn;
+        zSonarPulseState = 3;
+        break;
+      // 2e pulse allumée que l'on doit éteindre et attendre le wait !
+      case 3:
+        digitalWrite(ledPin, HIGH);
+        zSonarPulseNextMillis = millis() + zSonarPulseWait;
+        zSonarPulseState = 4;
+        break;
+      // 2e pulse éteinte pendant le wait que l'on doit allumer !
+      case 4:
+        digitalWrite(ledPin, LOW);
+        zSonarPulseNextMillis = millis() + zSonarPulseOn;
+        zSonarPulseState = 1;
+        break;
+    }
+  }
+}
 
-// static void ConnectWiFi() {
-//     USBSerial.printf("WIFI_SSID: %s\nWIFI_PASSWORD: %s\n", WIFI_SSID, WIFI_PASSWORD);
-//     WiFi.mode(WIFI_STA); //Optional
-//     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-//     WiFi.setTxPower(WIFI_POWER_8_5dBm);  //c'est pour le Lolin esp32-c3 mini V1 ! https://www.wemos.cc/en/latest/c3/c3_mini_1_0_0.html
-//     int txPower = WiFi.getTxPower();
-//     USBSerial.print("TX power: ");
-//     USBSerial.println(txPower);
-//     USBSerial.println("Connecting");
-//     while(WiFi.status() != WL_CONNECTED){
-//         USBSerial.print(".");
-//         delay(100);
-//     }
-//     USBSerial.println("\nConnected to the WiFi network");
-//     USBSerial.print("Local ESP32 IP: ");
-//     USBSerial.println(WiFi.localIP());
-// }
+
+// WIFI
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiManager.h>
+#include "secrets.h"
+WiFiClient client;
+HTTPClient http;
+
+static void ConnectWiFi() {
+    WiFi.mode(WIFI_STA); //Optional    
+    WiFiManager wm;
+    bool res;
+    res = wm.autoConnect("esp32_wifi_config",""); // password protected ap
+    if(!res) {
+        USBSerial.println("Failed to connect");
+        // ESP.restart();
+    }
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);  //c'est pour le Lolin esp32-c3 mini V1 ! https://www.wemos.cc/en/latest/c3/c3_mini_1_0_0.html
+    int txPower = WiFi.getTxPower();
+    USBSerial.print("TX power: ");
+    USBSerial.println(txPower);
+    USBSerial.println("Connecting");
+    while(WiFi.status() != WL_CONNECTED){
+        USBSerial.print(".");
+        delay(100);
+    }
+    USBSerial.println("\nConnected to the WiFi network");
+    USBSerial.print("SSID: ");
+    USBSerial.println(WiFi.SSID());
+    USBSerial.print("RSSI: ");
+    USBSerial.println(WiFi.RSSI());
+    USBSerial.print("IP: ");
+    USBSerial.println(WiFi.localIP());
+}
+
+
+// OTA WEB server
+const char* host = "densimetre_1";
+#include "otaWebServer.h"
 
 
 // // MQTT
@@ -412,85 +491,109 @@ float calculateTilt() {
 
 
 void setup() {
-    USBSerial.begin(19200);
-    USBSerial.setDebugOutput(true);       //pour voir les messages de debug des libs sur la console série !
-    delay(3000);  //le temps de passer sur la Serial Monitor ;-)
-    USBSerial.println("\n\n\n\n**************************************\nCa commence !\n");
+  // Pulse deux fois pour dire que l'on démarre
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW); delay(zSonarPulseOn); digitalWrite(ledPin, HIGH); delay(zSonarPulseOff);
+  digitalWrite(ledPin, LOW); delay(zSonarPulseOn); digitalWrite(ledPin, HIGH); delay(zSonarPulseOff);
+  delay(zSonarPulseWait);
 
-    pinMode(ledPin, OUTPUT);
-    digitalWrite(ledPin, HIGH);
-    delay(500); 
-    digitalWrite(ledPin, LOW);
 
-    // initialize accelerator sensor
-    Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
-#ifdef DEBUG
-    USBSerial.println("Initializing accelerator sensor...");
-#endif
-    accelgyro.initialize();
-    accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
-    accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
-    accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
-    accelgyro.setTempSensorEnabled(true);
-    // verify connection
-#ifdef DEBUG
-    USBSerial.println("Testing accelerator sensor connections...");
-#endif
-    if (accelgyro.testConnection()){
-#ifdef DEBUG
-      USBSerial.println("Accelerator sensor connection successful !");
-#endif
-    } else {
-      USBSerial.println("Accelerator sensor connection failed !");
-    }
-    delay(500);
 
-    // Calibration de l'accéléromètre si le btn EN est appuyé juste après le reset
-    pinMode(buttonPin, INPUT_PULLUP);
-    if (digitalRead(buttonPin) == LOW) {
-      // Calculate  offset
-      calculateOffset();
-      // Save offset into config
-      saveConfig();
-    }
+  // start serial console
+  USBSerial.begin(19200);
+  USBSerial.setDebugOutput(true);       //pour voir les messages de debug des libs sur la console série !
+  delay(3000);                          //le temps de passer sur la Serial Monitor ;-)
+  USBSerial.println("\n\n\n\n**************************************\nCa commence !"); USBSerial.println(zVERSION);
 
-#ifdef DEBUG
-    mountFS();
-    listDir(LittleFS, "/", 0); // List the directories up to one level beginning at the root directory
-    readFile(LittleFS, "/config.json"); // Read the complete file
-#endif
+  // si le bouton FLASH de l'esp32-c3 est appuyé dans les 3 secondes après le boot, la config WIFI sera effacée !
+  pinMode(buttonPin, INPUT_PULLUP);
+  if ( digitalRead(buttonPin) == LOW) {
+    WiFiManager wm; wm.resetSettings();
+    USBSerial.println("Config WIFI effacée !"); delay(1000);
+    ESP.restart();
+  }
 
-    readConfig();
-    setOffset();
+  // start WIFI
+  digitalWrite(ledPin, HIGH);
+  USBSerial.println("Connect WIFI !");
+  ConnectWiFi();
+  digitalWrite(ledPin, LOW);
+
+  // start OTA server
+  otaWebServer();
 
 
 
 
 
 
-    // USBSerial.println("Connect WIFI !");
-    // ConnectWiFi();
-    // digitalWrite(ledPin, HIGH);
-    // delay(500); 
+//     // initialize accelerator sensor
+//     Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
+// #ifdef DEBUG
+//     USBSerial.println("Initializing accelerator sensor...");
+// #endif
+//     accelgyro.initialize();
+//     accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+//     accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+//     accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
+//     accelgyro.setTempSensorEnabled(true);
+//     // verify connection
+// #ifdef DEBUG
+//     USBSerial.println("Testing accelerator sensor connections...");
+// #endif
+//     if (accelgyro.testConnection()){
+// #ifdef DEBUG
+//       USBSerial.println("Accelerator sensor connection successful !");
+// #endif
+//     } else {
+//       USBSerial.println("Accelerator sensor connection failed !");
+//     }
+//     delay(500);
 
-    // USBSerial.println("\n\nConnect MQTT !\n");
-    // ConnectMQTT();
+//     // Calibration de l'accéléromètre si le btn EN est appuyé juste après le reset
+//     pinMode(buttonPin, INPUT_PULLUP);
+//     if (digitalRead(buttonPin) == LOW) {
+//       // Calculate  offset
+//       calculateOffset();
+//       // Save offset into config
+//       saveConfig();
+//     }
 
-    USBSerial.println("\nC'est parti !\n");
+// #ifdef DEBUG
+//     mountFS();
+//     listDir(LittleFS, "/", 0); // List the directories up to one level beginning at the root directory
+//     readFile(LittleFS, "/config.json"); // Read the complete file
+// #endif
+
+//     readConfig();
+//     setOffset();
+
+
+
+
+
+
+//     // USBSerial.println("Connect WIFI !");
+//     // ConnectWiFi();
+//     // digitalWrite(ledPin, HIGH);
+//     // delay(500); 
+
+//     // USBSerial.println("\n\nConnect MQTT !\n");
+//     // ConnectMQTT();
+
+//     USBSerial.println("\nC'est parti !\n");
 }
 
 
 void loop() {
-    digitalWrite(ledPin, HIGH);
-    delay(100); 
-    digitalWrite(ledPin, LOW);
+
 
     // readAcceleration();
-    readAccelerationMoy();
+    // readAccelerationMoy();
     // USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
 
     // Calculate Tilt
-    USBSerial.printf("inclinaison:%f\n", calculateTilt());
+    // USBSerial.printf("inclinaison:%f\n", calculateTilt());
 
 
 
@@ -507,6 +610,9 @@ void loop() {
     // USBSerial.printf("sensor1:%d,sensor2:%d\n", sensorValue1, sensorValue2);
 
     // delay(PUBLISH_INTERVAL);
+
+    // Un petit coup sonar pulse sur la LED pour dire que tout fonctionne bien
+    sonarPulse();
 
     delay(300);
 }
