@@ -2,7 +2,7 @@
 // Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-#define zVERSION "Densimètre accel_mqtt, zf240525.1455"
+#define zVERSION "Densimètre accel_mqtt, zf240525.1657"
 /*
 Utilisation:
 
