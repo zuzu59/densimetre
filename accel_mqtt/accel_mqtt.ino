@@ -2,7 +2,7 @@
 // Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-#define zVERSION "zf240525.1029"
+#define zVERSION "Densimètre accel_mqtt, zf240525.1054"
 /*
 Utilisation:
 
@@ -69,25 +69,6 @@ float sensorValue5 = 0;  // variable to store the value coming from the sensor 5
 #define TEMP_CELSIUS 0
 
 
-
-// Accéléromètre MPU6050
-#include "zaccelgyro.h"
-
-
-
-
-
-
-// Deep Sleep
-#define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  300      /* Time ESP32 will go to sleep (in seconds) */
-RTC_DATA_ATTR int bootCount = 0;
-
-
-// Temperature sensor
-#include "ztemperature.h"
-
-
 // Solar Pulse
 #include "zsolarpulse.h"
 
@@ -109,11 +90,18 @@ const char* host = "densimetre_1";
 #include "zlittlefs.h"
 
 
+// Accéléromètre MPU6050
+#include "zaccelgyro.h"
 
 
+// Temperature sensor
+#include "ztemperature.h"
 
 
-
+// Deep Sleep
+#define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
+#define TIME_TO_SLEEP  300      /* Time ESP32 will go to sleep (in seconds) */
+RTC_DATA_ATTR int bootCount = 0;
 
 
 
@@ -269,6 +257,6 @@ void loop() {
     // Un petit coup sonar pulse sur la LED pour dire que tout fonctionne bien
     sonarPulse();
 
-    delay(1000);
+    delay(10000);
 }
 
