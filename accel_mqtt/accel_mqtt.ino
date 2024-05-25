@@ -2,7 +2,7 @@
 // Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-#define zVERSION "zf240524.2112"
+#define zVERSION "zf240525.1029"
 /*
 Utilisation:
 
@@ -69,31 +69,12 @@ float sensorValue5 = 0;  // variable to store the value coming from the sensor 5
 #define TEMP_CELSIUS 0
 
 
-// File system FS esp32-c3
-#include <FS.h>          //this needs to be first
-#include <LittleFS.h>
-#include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
-
-#define CFGFILE "/config.json"
-
-struct iData{
-  char name[33] = "Densimètre num 1";
-  uint32_t sleeptime = 15 * 60;
-  int16_t Offset[6];    //axOffsetInternal, ayOffsetInternal, azOffsetInternal, axOffset, ayOffset, azOffset
-};
-
-iData myData;
-
 
 // Accéléromètre MPU6050
-#include "MPU6050.h"
-#include "Wire.h"
+#include "zaccelgyro.h"
 
-MPU6050 accelgyro;
 
-int16_t ax, ay, az;
-const int16_t moyNbVal = 10 ;
-int16_t axOffset, ayOffset, azOffset;
+
 
 
 
@@ -103,88 +84,16 @@ int16_t axOffset, ayOffset, azOffset;
 RTC_DATA_ATTR int bootCount = 0;
 
 
-// Temperature sensor DS18B20
-#include <OneWire.h>
-#include <DallasTemperature.h>
-// ATTENTION, c'est le brochage en VCC -> 0 pour le densimètre où il n'y a PAS de mesure de la tension de la batterie !
-const int vccPin = 0;       // the number of the VCC pin
-const int pullupPin = 1;    // the number of the PULLUP pin
-const int oneWireBus = 2;   // GPIO where the DS18B20 is connected to
-const int gndPin = 3;       // the number of the GND pin
-// Setup a oneWire instance to communicate with any OneWire devices
-OneWire oneWire(oneWireBus);
-// Pass our oneWire reference to Dallas Temperature sensor 
-DallasTemperature sensors(&oneWire);
+// Temperature sensor
+#include "ztemperature.h"
 
 
-
-// Machine à état pour faire pulser deux fois la petite LED sans bloquer le système
-void sonarPulse(){
-  if (zSonarPulseNextMillis < millis()){
-    switch (zSonarPulseState){
-      // 1ère pulse allumée que l'on doit éteindre !
-      case 1:
-        digitalWrite(ledPin, HIGH);
-        zSonarPulseNextMillis = millis() + zSonarPulseOff;
-        zSonarPulseState = 2;
-        break;
-      // 1ère pulse éteinte que l'on doit allumer !
-      case 2:
-        digitalWrite(ledPin, LOW);
-        zSonarPulseNextMillis = millis() + zSonarPulseOn;
-        zSonarPulseState = 3;
-        break;
-      // 2e pulse allumée que l'on doit éteindre et attendre le wait !
-      case 3:
-        digitalWrite(ledPin, HIGH);
-        zSonarPulseNextMillis = millis() + zSonarPulseWait;
-        zSonarPulseState = 4;
-        break;
-      // 2e pulse éteinte pendant le wait que l'on doit allumer !
-      case 4:
-        digitalWrite(ledPin, LOW);
-        zSonarPulseNextMillis = millis() + zSonarPulseOn;
-        zSonarPulseState = 1;
-        break;
-    }
-  }
-}
+// Solar Pulse
+#include "zsolarpulse.h"
 
 
 // WIFI
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <WiFiManager.h>
-#include "secrets.h"
-WiFiClient client;
-HTTPClient http;
-
-static void ConnectWiFi() {
-    WiFi.mode(WIFI_STA); //Optional    
-    WiFiManager wm;
-    bool res;
-    res = wm.autoConnect("esp32_wifi_config",""); // password protected ap
-    if(!res) {
-        USBSerial.println("Failed to connect");
-        // ESP.restart();
-    }
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);  //c'est pour le Lolin esp32-c3 mini V1 ! https://www.wemos.cc/en/latest/c3/c3_mini_1_0_0.html
-    int txPower = WiFi.getTxPower();
-    USBSerial.print("TX power: ");
-    USBSerial.println(txPower);
-    USBSerial.println("Connecting");
-    while(WiFi.status() != WL_CONNECTED){
-        USBSerial.print(".");
-        delay(100);
-    }
-    USBSerial.println("\nConnected to the WiFi network");
-    USBSerial.print("SSID: ");
-    USBSerial.println(WiFi.SSID());
-    USBSerial.print("RSSI: ");
-    USBSerial.println(WiFi.RSSI());
-    USBSerial.print("IP: ");
-    USBSerial.println(WiFi.localIP());
-}
+#include "zwifi.h"
 
 
 // OTA WEB server
@@ -193,55 +102,11 @@ const char* host = "densimetre_1";
 
 
 // MQTT
-#include <ArduinoHA.h>
-#define DEVICE_NAME      "densimetre1"
-#define SENSOR_NAME1     "Temp_Internal"
-#define SENSOR_NAME2     "Battery"
-#define SENSOR_NAME3     "RSSI"
-#define SENSOR_NAME4     "bootCount"
-#define SENSOR_NAME5     "Temp_DS18B20"
+#include "zmqtt.h"
 
-HADevice device(DEVICE_NAME);                // c'est le ID du device, il doit être unique !
-HAMqtt mqtt(client, device);
-unsigned long lastUpdateAt = 0;
 
-// c'est le ID du sensor, il doit être unique !
-HASensorNumber Sensor1(DEVICE_NAME SENSOR_NAME1, HASensorNumber::PrecisionP1);   // c'est le nom du sensor sur MQTT ! (PrecisionP1=x.1, PrecisionP2=x.01, ...)
-HASensorNumber Sensor2(DEVICE_NAME SENSOR_NAME2, HASensorNumber::PrecisionP2);   // c'est le nom du sensor sur MQTT ! (PrecisionP1=x.1, PrecisionP2=x.01, ...)
-HASensorNumber Sensor3(DEVICE_NAME SENSOR_NAME3);   // c'est le nom du sensor sur MQTT !
-HASensorNumber Sensor4(DEVICE_NAME SENSOR_NAME4);   // c'est le nom du sensor sur MQTT !
-HASensorNumber Sensor5(DEVICE_NAME SENSOR_NAME5, HASensorNumber::PrecisionP1);   // c'est le nom du sensor sur MQTT ! (PrecisionP1=x.1, PrecisionP2=x.01, ...)
-
-static void ConnectMQTT() {
-    device.setName(DEVICE_NAME);                // c'est le nom du device sur Home Assistant !
-    mqtt.setDataPrefix(DEVICE_NAME);             // c'est le nom du device sur MQTT !
-    device.setSoftwareVersion(zVERSION);
-    device.setManufacturer("espressif");
-    device.setModel("esp32-c3 super mini");
-
-    Sensor1.setIcon("mdi:thermometer");
-    Sensor1.setName(SENSOR_NAME1);           // c'est le nom du sensor sur Home Assistant !
-    Sensor1.setUnitOfMeasurement("°C");
-
-    Sensor2.setIcon("mdi:battery-charging-wireless-outline");
-    Sensor2.setName(SENSOR_NAME2);           // c'est le nom du sensor sur Home Assistant !
-    Sensor2.setUnitOfMeasurement("V");
-
-    Sensor3.setIcon("mdi:wifi-strength-1");
-    Sensor3.setName(SENSOR_NAME3);           // c'est le nom du sensor sur Home Assistant !
-    Sensor3.setUnitOfMeasurement("dBm");
-
-    Sensor4.setIcon("mdi:counter");
-    Sensor4.setName(SENSOR_NAME4);           // c'est le nom du sensor sur Home Assistant !
-    Sensor4.setUnitOfMeasurement("sum");
-
-    Sensor5.setIcon("mdi:thermometer");
-    Sensor5.setName(SENSOR_NAME5);           // c'est le nom du sensor sur Home Assistant !
-    Sensor5.setUnitOfMeasurement("°C");
-
-    mqtt.begin(BROKER_ADDR, BROKER_USERNAME, BROKER_PASSWORD);
-    USBSerial.println("MQTT connected");
-}
+// LittleFS
+#include "zlittlefs.h"
 
 
 
@@ -249,305 +114,8 @@ static void ConnectMQTT() {
 
 
 
-bool formatLittleFS()
-{
-  USBSerial.print("\nneed to format LittleFS: ");
-  LittleFS.end();
-  LittleFS.begin();
-  USBSerial.println(LittleFS.format());
-  return LittleFS.begin();
-}
 
 
-bool mountFS(){
-#ifdef DEBUG
-  USBSerial.print("mounting fs...\n");
-#endif
-  // if LittleFS is not usable
-  if (!LittleFS.begin()){
-    USBSerial.println("Failed to mount file system");
-    if (!formatLittleFS()){
-      USBSerial.println("Failed to format file system - hardware issues!");
-      return false;
-    }
-  }
-  return true;
-}
-
-
-bool saveConfig(){
-#ifdef DEBUG
-  USBSerial.println("saving config...");
-#endif
-  JsonDocument doc;
-  doc["Name"] = myData.name;
-  doc["Sleep"] = myData.sleeptime;
-  JsonArray array = doc["Offset"].to<JsonArray>();
-  for (auto &&i : myData.Offset)
-  {
-    array.add(i);
-  }
-  mountFS();
-  File configFile = LittleFS.open(CFGFILE, "w");
-  if (!configFile)
-  {
-    USBSerial.println("failed to open config file for writing");
-    LittleFS.end();
-    return false;
-  }
-  else
-  {
-    serializeJson(doc, configFile);
-#ifdef DEBUG
-    USBSerial.println("serializeJson...");
-    serializeJson(doc, USBSerial);
-#endif
-    configFile.flush();
-    configFile.close();
-#ifdef DEBUG
-    USBSerial.println("\nsaved successfully");
-#endif
-    return true;
-  }
-}
-
-
-bool readConfig(){
-#ifdef DEBUG
-  USBSerial.println("read config...");
-  USBSerial.print("mounting FS...");
-#endif
-  if (!LittleFS.begin())
-  {
-    USBSerial.println(" ERROR: failed to mount FS!");
-    return false;
-  }
-  else
-  {
-#ifdef DEBUG
-    USBSerial.println(" mounted!");
-#endif
-    if (!LittleFS.exists(CFGFILE))
-    {
-      USBSerial.println("ERROR: failed to load json config");
-      return false;
-    }
-    else
-    {
-      // file exists, reading and loading
-#ifdef DEBUG
-      USBSerial.println("reading config file");
-#endif
-      File configFile = LittleFS.open(CFGFILE, "r");
-      if (!configFile)
-      {
-        USBSerial.println("ERROR: unable to open config file");
-      }
-      else
-      {
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, configFile);
-        if (error)
-        {
-          USBSerial.print("deserializeJson() failed: ");
-          USBSerial.println(error.c_str());
-        }
-        else
-        {
-          if (doc.containsKey("Name"))
-            strcpy(myData.name, doc["Name"]);
-          if (doc.containsKey("Sleep"))
-            myData.sleeptime = doc["Sleep"];
-          if (doc.containsKey("Offset"))
-          {
-            for (size_t i = 0; i < (sizeof(myData.Offset) / sizeof(*myData.Offset)); i++)
-            {
-              myData.Offset[i] = doc["Offset"][i];
-            }
-          }
-#ifdef DEBUG
-          USBSerial.println("parsed config:");
-          serializeJson(doc, USBSerial);
-          USBSerial.println("");
-#endif
-        }
-      }
-    }
-  }
-  return true;
-}
-
-
-void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
-    USBSerial.printf("Listing directory: %s\r\n", dirname);
-    File root = fs.open(dirname);
-    if(!root){
-        USBSerial.println("- failed to open directory");
-        return;
-    }
-    if(!root.isDirectory()){
-        USBSerial.println(" - not a directory");
-        return;
-    }
-    File file = root.openNextFile();
-    while(file){
-        if(file.isDirectory()){
-            USBSerial.print("  DIR : ");
-            USBSerial.println(file.name());
-            if(levels){
-                listDir(fs, file.path(), levels -1);
-            }
-        } else {
-            USBSerial.print("  FILE: ");
-            USBSerial.print(file.name());
-            USBSerial.print("\tSIZE: ");
-            USBSerial.println(file.size());
-        }
-        file = root.openNextFile();
-    }
-}
-
-
-void readFile(fs::FS &fs, const char * path){
-#ifdef DEBUG
-    USBSerial.printf("Reading file: %s\r\n", path);
-#endif
-    File file = fs.open(path);
-    if(!file || file.isDirectory()){
-        USBSerial.println("- failed to open file for reading");
-        return;
-    }
-#ifdef DEBUG
-    USBSerial.println("- read from file:");
-#endif
-    while(file.available()){
-        USBSerial.write(file.read());
-    }
-    USBSerial.println("");
-    file.close();
-}
-
-
-void calculateOffset() {
-    USBSerial.println("Updating internal sensor offsets...");
-
-    USBSerial.println("Au boot...");
-    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", accelgyro.getXAccelOffset(), accelgyro.getYAccelOffset(), accelgyro.getZAccelOffset());
-
-    USBSerial.println("Avant calibration...");    accelgyro.setXAccelOffset(0);   accelgyro.setYAccelOffset(0);   accelgyro.setZAccelOffset(0);
-    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", accelgyro.getXAccelOffset(), accelgyro.getYAccelOffset(), accelgyro.getZAccelOffset());
-    accelgyro.getAcceleration(&ax, &ay, &az);
-    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
-
-    USBSerial.println("Après calibration...");
-    accelgyro.CalibrateAccel(6);
-    myData.Offset[0] =accelgyro.getXAccelOffset();    myData.Offset[1] =accelgyro.getYAccelOffset();    myData.Offset[2] =accelgyro.getZAccelOffset();
-    USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", myData.Offset[0], myData.Offset[1], myData.Offset[2]);
-    accelgyro.getAcceleration(&ax, &ay, &az);
-    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
-    myData.Offset[3] = -ax;  myData.Offset[4] = -ay;  myData.Offset[5] = -az;
-    axOffset = myData.Offset[3];   ayOffset = myData.Offset[4];   azOffset = myData.Offset[5];
-    ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
-    USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
-    USBSerial.println("End of updating internal sensor offsets...");
-}
-
-
-void setOffset() {
-#ifdef DEBUG
-  USBSerial.println("Set offset");
-  USBSerial.println("Set accelerator offset");
-  USBSerial.printf("Internal sensor offsets: %d\t%d\t%d\n", myData.Offset[0], myData.Offset[1], myData.Offset[2]);
-  USBSerial.printf("Sensor offsets: %d\t%d\t%d\n", myData.Offset[3], myData.Offset[4], myData.Offset[5]);
-#endif
-  axOffset = myData.Offset[3];   ayOffset = myData.Offset[4];   azOffset = myData.Offset[5];
-}
-
-
-
-// #define DEBUG true
-
-
-void readAcceleration() {
-#ifdef DEBUG
-  USBSerial.println("Read acceleration...");
-#endif
-  accelgyro.getAcceleration(&ax, &ay, &az);
-  ax = ax + axOffset;   ay = ay + ayOffset;   az = az + azOffset;
-#ifdef DEBUG
-  USBSerial.printf("Acceleration: x:%d,y:%d,z:%d\n", ax, ay, az);
-#endif
-}
-
-
-void readAccelerationMoy() {
-#ifdef DEBUG
-  USBSerial.println("Read acceleration moyenne...");
-#endif
-  long axSum = 0, aySum = 0, azSum = 0;
-  for (size_t i = 0; i < moyNbVal; i++)
-  {
-    readAcceleration();
-    axSum = axSum + ax; aySum = aySum + ay; azSum = azSum + az; 
-  }
-  ax = axSum / moyNbVal; ay = aySum / moyNbVal; az = azSum / moyNbVal; 
-#ifdef DEBUG
-  USBSerial.printf("Acceleration moyenne: x:%d,y:%d,z:%d\n", ax, ay, az);
-#endif
-}
-
-
-#undef DEBUG
-
-
-
-float calculateTilt() {
-
-  if (ax == 0 && ay == 0 && az == 0)
-    return 0.f;
-
-  // return (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI);
-  return 180 - (acos(abs(ay) / (sqrt(ax * ax + ay * ay + az * az))) * 180.0 / M_PI * 2);
-}
-
-
-// Temperature sensor DS18B20 initialising
-void initDS18B20Sensor(){
-    pinMode(gndPin, OUTPUT);   // gnd
-    digitalWrite(gndPin, LOW);
-    pinMode(pullupPin, INPUT_PULLUP);   // pull up
-    pinMode(vccPin, OUTPUT );   // vcc
-    digitalWrite(vccPin, HIGH);
-    // Start the DS18B20 sensor
-    sensors.begin();
-}
-
-
-// Lit les senseurs
-void readSensor(){
-    // lit la température interne
-    // temp_sensor_read_celsius(&sensorValue1);
-    // // lit la tension de la batterie
-    // uint16_t reading = analogRead(sensorPin);
-    // // fonction de conversion bit to volts de l'ADC avec le diviseur résistif et de la diode !
-    // // voir https://raw.githubusercontent.com/zuzu59/esp32-c3-thermo-mqtt-dsleep/master/fonction_conversion_ADC.txt
-    // // 0.001034 * (ADC - 2380) + 3.6
-    // sensorValue2 = 0.001034 * (reading - 2380) + 3.6;            // 2960 pour 4.2V et 2380 pour 3.6V
-    // lit la température du DS18B20
-    sensors.requestTemperatures(); 
-    sensorValue5 = sensors.getTempCByIndex(0);
-}
-
-
-// Envoie les senseurs au mqtt
-void sendSensorMqtt(){
-    mqtt.loop();
-    Sensor1.setValue(sensorValue1);
-    Sensor2.setValue(sensorValue2);
-    Sensor3.setValue(sensorValue3);
-    Sensor4.setValue(sensorValue4);
-    Sensor5.setValue(sensorValue5);
-}
 
 
 
@@ -586,11 +154,7 @@ void setup() {
   USBSerial.println("Boot number: " + String(bootCount));
 
   // start WIFI
-  digitalWrite(ledPin, HIGH);
-  USBSerial.println("Connect WIFI !");
-  ConnectWiFi();
-  digitalWrite(ledPin, LOW);
-
+  zStartWifi();
   sensorValue3 = WiFi.RSSI();
 
   // start OTA server
