@@ -1,13 +1,15 @@
-// zf240525.1039
+// zf240525.1718
 
 // MQTT
 #include <ArduinoHA.h>
-#define DEVICE_NAME      "densimetre1"
+#define DEVICE_NAME      "Densimetre1"
 #define SENSOR_NAME1     "Temp_Internal"
-#define SENSOR_NAME2     "Battery"
+#define SENSOR_NAME2     "Tilt"
 #define SENSOR_NAME3     "RSSI"
-#define SENSOR_NAME4     "bootCount"
+#define SENSOR_NAME4     "BootCount"
 #define SENSOR_NAME5     "Temp_DS18B20"
+
+#define PUBLISH_INTERVAL  10000 // how often image should be published to HA (milliseconds)
 
 HADevice device(DEVICE_NAME);                // c'est le ID du device, il doit être unique !
 HAMqtt mqtt(client, device);
@@ -31,9 +33,9 @@ static void ConnectMQTT() {
     Sensor1.setName(SENSOR_NAME1);           // c'est le nom du sensor sur Home Assistant !
     Sensor1.setUnitOfMeasurement("°C");
 
-    Sensor2.setIcon("mdi:battery-charging-wireless-outline");
+    Sensor2.setIcon("mdi:angle-acute");
     Sensor2.setName(SENSOR_NAME2);           // c'est le nom du sensor sur Home Assistant !
-    Sensor2.setUnitOfMeasurement("V");
+    Sensor2.setUnitOfMeasurement("°");
 
     Sensor3.setIcon("mdi:wifi-strength-1");
     Sensor3.setName(SENSOR_NAME3);           // c'est le nom du sensor sur Home Assistant !

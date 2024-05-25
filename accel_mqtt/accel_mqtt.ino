@@ -2,7 +2,7 @@
 // Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-#define zVERSION "Densimètre accel_mqtt, zf240525.1657"
+#define zVERSION "Densimètre accel_mqtt, zf240525.1714"
 /*
 Utilisation:
 
@@ -151,13 +151,27 @@ void setup() {
   // initialize accelerator sensor
   zStartAccel();
 
+  // Connexion au MQTT
+  USBSerial.println("\n\nConnect MQTT !\n");
+  ConnectMQTT();
+
+  // go go go
+  USBSerial.println("\nC'est parti !\n");
 
 
 
-//     // USBSerial.println("\n\nConnect MQTT !\n");
-//     // ConnectMQTT();
 
-//     USBSerial.println("\nC'est parti !\n");
+
+    // sendSensorMqtt();
+    // USBSerial.printf("sensor1:%f,sensor2:%f,sensor5:%f\n", sensorValue1, sensorValue2, sensorValue5);
+    // USBSerial.println("\nC'est envoyé !\n");
+
+    // USBSerial.println("Going to sleep now");
+    // delay(200);
+    // USBSerial.flush(); 
+    // esp_deep_sleep_start();
+    // USBSerial.println("This will never be printed");
+
 }
 
 
@@ -176,20 +190,13 @@ void loop() {
 #endif
   sensorValue2 = zTilt;
 
-
-
-
-  // mqtt.loop();
-
-  // Sensor1.setValue(sensorValue1);
-  // Sensor2.setValue(sensorValue2);
-
-  // USBSerial.printf("sensor1:%d,sensor2:%d\n", sensorValue1, sensorValue2);
-
-  // delay(PUBLISH_INTERVAL);
-
-
+  // Lit les températures
   readSensor();
+
+  // Envoie les mesures au MQTT
+  sendSensorMqtt();
+
+  // Graphe sur l'Arduino IDE les courbes des mesures
   USBSerial.print("sensor1:");
   USBSerial.print(sensorValue1);
   USBSerial.print(",sensor2:");
@@ -201,9 +208,12 @@ void loop() {
   USBSerial.print(",sensor5:");
   USBSerial.println(sensorValue5);
 
-  zDelay1(500);
+  // Délais non bloquant pour le sonarpulse et l'OTA
+  zDelay1(PUBLISH_INTERVAL);
 }
 
+
+// Délais non bloquant pour le sonarpulse et l'OTA
 void zDelay1(long zDelayMili){
   long zDelay1NextMillis = zDelayMili + millis(); 
   while(millis() < zDelay1NextMillis ){
