@@ -2,7 +2,7 @@
 // Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-#define zVERSION "Densimètre accel_mqtt, zf240525.1215"
+#define zVERSION "Densimètre accel_mqtt, zf240525.1455"
 /*
 Utilisation:
 
@@ -46,7 +46,7 @@ https://chat.mistral.ai/    pour toute la partie API REST ᕗ
 
 
 
-#define DEBUG true
+// #define DEBUG true
 // #undef DEBUG
 
 
@@ -116,12 +116,11 @@ void setup() {
   digitalWrite(ledPin, LOW); delay(zSonarPulseOn); digitalWrite(ledPin, HIGH); delay(zSonarPulseOff);
   delay(zSonarPulseWait);
 
-
-    // Il faut lire la température tout de suite au début avant que le MCU ne puisse chauffer !
-    // initTempSensor();
-    initDS18B20Sensor();
-    delay(200);
-    readSensor();
+  // Il faut lire la température tout de suite au début avant que le MCU ne puisse chauffer !
+  // initTempSensor();
+  initDS18B20Sensor();
+  delay(200);
+  readSensor();
 
   // start serial console
   USBSerial.begin(19200);
@@ -129,13 +128,13 @@ void setup() {
   delay(3000);                          //le temps de passer sur la Serial Monitor ;-)
   USBSerial.println("\n\n\n\n**************************************\nCa commence !"); USBSerial.println(zVERSION);
 
-  // si le bouton FLASH de l'esp32-c3 est appuyé dans les 3 secondes après le boot, la config WIFI sera effacée !
-  pinMode(buttonPin, INPUT_PULLUP);
-  if ( digitalRead(buttonPin) == LOW) {
-    WiFiManager wm; wm.resetSettings();
-    USBSerial.println("Config WIFI effacée !"); delay(1000);
-    ESP.restart();
-  }
+  // // si le bouton FLASH de l'esp32-c3 est appuyé dans les 3 secondes après le boot, la config WIFI sera effacée !
+  // pinMode(buttonPin, INPUT_PULLUP);
+  // if ( digitalRead(buttonPin) == LOW) {
+  //   WiFiManager wm; wm.resetSettings();
+  //   USBSerial.println("Config WIFI effacée !"); delay(1000);
+  //   ESP.restart();
+  // }
 
   //Increment boot number and print it every reboot
   ++bootCount;
@@ -149,61 +148,11 @@ void setup() {
   // start OTA server
   otaWebServer();
 
+  // initialize accelerator sensor
+  zStartAccel();
 
 
 
-
-
-    // initialize accelerator sensor
-    Wire.begin(4, 5);     // J'ai branché mon sensor sur les pins 4 (DATA) et 5 (SLCK) de mon esp32c3 !
-#ifdef DEBUG
-    USBSerial.println("Initializing accelerator sensor...");
-#endif
-    accelgyro.initialize();
-    accelgyro.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
-    accelgyro.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
-    accelgyro.setDLPFMode(MPU6050_DLPF_BW_5);
-    accelgyro.setTempSensorEnabled(true);
-    // verify connection
-#ifdef DEBUG
-    USBSerial.println("Testing accelerator sensor connections...");
-#endif
-    if (accelgyro.testConnection()){
-#ifdef DEBUG
-      USBSerial.println("Accelerator sensor connection successful !");
-#endif
-    } else {
-      USBSerial.println("Accelerator sensor connection failed !");
-    }
-    delay(500);
-
-    // Calibration de l'accéléromètre si le btn EN est appuyé juste après le reset
-    pinMode(buttonPin, INPUT_PULLUP);
-    if (digitalRead(buttonPin) == LOW) {
-      // Calculate  offset
-      calculateOffset();
-      // Save offset into config
-      saveConfig();
-    }
-
-#ifdef DEBUG
-    mountFS();
-    listDir(LittleFS, "/", 0); // List the directories up to one level beginning at the root directory
-    readFile(LittleFS, "/config.json"); // Read the complete file
-#endif
-
-    readConfig();
-    setOffset();
-
-
-
-
-
-
-//     // USBSerial.println("Connect WIFI !");
-//     // ConnectWiFi();
-//     // digitalWrite(ledPin, HIGH);
-//     // delay(500); 
 
 //     // USBSerial.println("\n\nConnect MQTT !\n");
 //     // ConnectMQTT();
@@ -213,21 +162,22 @@ void setup() {
 
 
 void loop() {
-
-
-  // readAcceleration();
-  // readAccelerationMoy();
-  // USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
+  // Lit l'accéléromètre
+  readAcceleration();
+  readAccelerationMoy();
+#ifdef DEBUG
+  USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
+#endif
 
   // Calculate Tilt
-  // USBSerial.printf("inclinaison:%f\n", calculateTilt());
+  zTilt = calculateTilt();
+#ifdef DEBUG
+  USBSerial.printf("inclinaison:%f\n", zTilt);
+#endif
+  sensorValue2 = zTilt;
 
 
 
-
-
-  // sensorValue1 = analogRead(sensorPin1);
-  // sensorValue2 = analogRead(sensorPin2);
 
   // mqtt.loop();
 
@@ -251,7 +201,7 @@ void loop() {
   USBSerial.print(",sensor5:");
   USBSerial.println(sensorValue5);
 
-  zDelay1(10000);
+  zDelay1(500);
 }
 
 void zDelay1(long zDelayMili){
