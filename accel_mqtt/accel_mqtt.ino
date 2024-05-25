@@ -2,7 +2,7 @@
 // Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-#define zVERSION "Densimètre accel_mqtt, zf240525.1054"
+#define zVERSION "Densimètre accel_mqtt, zf240525.1111"
 /*
 Utilisation:
 
@@ -55,11 +55,12 @@ https://chat.mistral.ai/    pour toute la partie API REST ᕗ
 const int ledPin = 8;    // the number of the LED pin
 const int buttonPin = 9;  // the number of the pushbutton pin
 float rrsiLevel = 0;      // variable to store the RRSI level
-const int zSonarPulseOn = 100;    // délai pour sonarPulse
-const int zSonarPulseOff = 200;    // délai pour sonarPulse
-const int zSonarPulseWait = 1000;    // délai pour sonarPulse
+const int zSonarPulseOn = 50;    // délai pour sonarPulse
+const int zSonarPulseOff = 100;    // délai pour sonarPulse
+const int zSonarPulseWait = 500;    // délai pour sonarPulse
 byte zSonarPulseState = 1;    // état pour sonarPulse
 long zSonarPulseNextMillis = 0;    // état pour sonarPulse
+
 
 float sensorValue1 = 0;  // variable to store the value coming from the sensor 1
 float sensorValue2 = 0;  // variable to store the value coming from the sensor 2
@@ -212,51 +213,53 @@ void setup() {
 
 
 void loop() {
-  // OTA loop
-  server.handleClient();
 
-    // readAcceleration();
-    // readAccelerationMoy();
-    // USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
 
-    // Calculate Tilt
-    // USBSerial.printf("inclinaison:%f\n", calculateTilt());
+  // readAcceleration();
+  // readAccelerationMoy();
+  // USBSerial.printf("x:%d,y:%d,z:%d\n", ax, ay, az);
 
+  // Calculate Tilt
+  // USBSerial.printf("inclinaison:%f\n", calculateTilt());
 
 
 
 
-    // sensorValue1 = analogRead(sensorPin1);
-    // sensorValue2 = analogRead(sensorPin2);
 
-    // mqtt.loop();
+  // sensorValue1 = analogRead(sensorPin1);
+  // sensorValue2 = analogRead(sensorPin2);
 
-    // Sensor1.setValue(sensorValue1);
-    // Sensor2.setValue(sensorValue2);
+  // mqtt.loop();
 
-    // USBSerial.printf("sensor1:%d,sensor2:%d\n", sensorValue1, sensorValue2);
+  // Sensor1.setValue(sensorValue1);
+  // Sensor2.setValue(sensorValue2);
 
-    // delay(PUBLISH_INTERVAL);
+  // USBSerial.printf("sensor1:%d,sensor2:%d\n", sensorValue1, sensorValue2);
 
-
-    readSensor();
-    USBSerial.print("sensor1:");
-    USBSerial.print(sensorValue1);
-    USBSerial.print(",sensor2:");
-    USBSerial.print(sensorValue2);
-    USBSerial.print(",sensor3:");
-    USBSerial.print(sensorValue3);
-    USBSerial.print(",sensor4:");
-    USBSerial.print(sensorValue4);
-    USBSerial.print(",sensor5:");
-    USBSerial.println(sensorValue5);
+  // delay(PUBLISH_INTERVAL);
 
 
+  readSensor();
+  USBSerial.print("sensor1:");
+  USBSerial.print(sensorValue1);
+  USBSerial.print(",sensor2:");
+  USBSerial.print(sensorValue2);
+  USBSerial.print(",sensor3:");
+  USBSerial.print(sensorValue3);
+  USBSerial.print(",sensor4:");
+  USBSerial.print(sensorValue4);
+  USBSerial.print(",sensor5:");
+  USBSerial.println(sensorValue5);
 
-
-    // Un petit coup sonar pulse sur la LED pour dire que tout fonctionne bien
-    sonarPulse();
-
-    delay(10000);
+  zDelay1(10000);
 }
 
+void zDelay1(long zDelayMili){
+  long zDelay1NextMillis = zDelayMili + millis(); 
+  while(zSonarPulseNextMillis > millis()){
+    // OTA loop
+    server.handleClient();
+    // Un petit coup sonar pulse sur la LED pour dire que tout fonctionne bien
+    sonarPulse();
+  }
+}
