@@ -2,7 +2,7 @@
 // Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-#define zVERSION "Densimètre accel_mqtt, zf240525.1714"
+#define zVERSION "Densimètre accel_mqtt, zf240525.2021"
 /*
 Utilisation:
 
@@ -101,12 +101,8 @@ const char* host = "densimetre_1";
 
 // Deep Sleep
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  300      /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP  60      /* Time ESP32 will go to sleep (in seconds) */
 RTC_DATA_ATTR int bootCount = 0;
-
-
-
-
 
 
 void setup() {
@@ -141,6 +137,12 @@ void setup() {
   sensorValue4 = bootCount;
   USBSerial.println("Boot number: " + String(bootCount));
 
+  // First we configure the wake up source
+  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+  USBSerial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) + " Seconds");
+
+
+
   // start WIFI
   zStartWifi();
   sensorValue3 = WiFi.RSSI();
@@ -158,24 +160,30 @@ void setup() {
   // go go go
   USBSerial.println("\nC'est parti !\n");
 
+  // Envoie toute la sauce !
+  zEnvoieTouteLaSauce();
+  USBSerial.println("\nC'est envoyé !\n");
 
-
-
-
-    // sendSensorMqtt();
-    // USBSerial.printf("sensor1:%f,sensor2:%f,sensor5:%f\n", sensorValue1, sensorValue2, sensorValue5);
-    // USBSerial.println("\nC'est envoyé !\n");
-
-    // USBSerial.println("Going to sleep now");
-    // delay(200);
-    // USBSerial.flush(); 
-    // esp_deep_sleep_start();
-    // USBSerial.println("This will never be printed");
-
+  // On va dormir !
+  USBSerial.println("Going to sleep now");
+  delay(200);
+  USBSerial.flush(); 
+  esp_deep_sleep_start();
+  USBSerial.println("This will never be printed");
 }
 
 
 void loop() {
+  // Envoie toute la sauce !
+  zEnvoieTouteLaSauce();
+
+  // Délais non bloquant pour le sonarpulse et l'OTA
+  zDelay1(PUBLISH_INTERVAL);
+}
+
+
+// Envoie toute la sauce !
+void zEnvoieTouteLaSauce(){
   // Lit l'accéléromètre
   readAcceleration();
   readAccelerationMoy();
@@ -207,9 +215,6 @@ void loop() {
   USBSerial.print(sensorValue4);
   USBSerial.print(",sensor5:");
   USBSerial.println(sensorValue5);
-
-  // Délais non bloquant pour le sonarpulse et l'OTA
-  zDelay1(PUBLISH_INTERVAL);
 }
 
 
@@ -223,3 +228,4 @@ void zDelay1(long zDelayMili){
     sonarPulse();
   }
 }
+
