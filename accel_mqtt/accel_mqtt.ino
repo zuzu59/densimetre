@@ -2,7 +2,7 @@
 // Ajout aussi de la nouvelle couche WIFI manager ainsi que l'OTA
 // ATTENTION, ce code a été testé sur un esp32-c3. Pas testé sur les autres boards !
 //
-#define zVERSION "Densimètre accel_mqtt, zf240525.2029"
+#define zVERSION "Densimètre accel_mqtt, zf240527.1157"
 /*
 Utilisation:
 
@@ -30,6 +30,7 @@ Pour JSON, il faut installer cette lib:
 https://github.com/bblanchon/ArduinoJson
 
 Sources:
+https://www.espboards.dev/blog/esp32-inbuilt-temperature-sensor
 https://forum.fritzing.org/t/need-esp32-c3-super-mini-board-model/20561
 https://www.aliexpress.com/item/1005006005040320.html
 https://randomnerdtutorials.com/esp32-useful-wi-fi-functions-arduino
@@ -101,7 +102,8 @@ const char* host = "densimetre_1";
 
 // Deep Sleep
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  300      /* Time ESP32 will go to sleep (in seconds) */
+// #define TIME_TO_SLEEP  300      /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP  120      /* Time ESP32 will go to sleep (in seconds) */
 RTC_DATA_ATTR int bootCount = 0;
 
 
@@ -114,6 +116,7 @@ void setup() {
 
   // Il faut lire la température tout de suite au début avant que le MCU ne puisse chauffer !
   // initTempSensor();
+  initTempSensor();
   initDS18B20Sensor();
   delay(200);
   readSensor();

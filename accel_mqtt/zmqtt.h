@@ -2,14 +2,14 @@
 
 // MQTT
 #include <ArduinoHA.h>
-#define DEVICE_NAME      "Densimetre1"
+#define DEVICE_NAME      "densimetre1"       // toujours en minuscules !
 #define SENSOR_NAME1     "Temp_Internal"
 #define SENSOR_NAME2     "Tilt"
 #define SENSOR_NAME3     "RSSI"
 #define SENSOR_NAME4     "BootCount"
 #define SENSOR_NAME5     "Temp_DS18B20"
 
-#define PUBLISH_INTERVAL  10000 // how often image should be published to HA (milliseconds)
+#define PUBLISH_INTERVAL  2000 // how often image should be published to HA (milliseconds)
 
 HADevice device(DEVICE_NAME);                // c'est le ID du device, il doit être unique !
 HAMqtt mqtt(client, device);
